@@ -1,7 +1,12 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
+#ifndef _XBOX
 #include <Windows.h>
 #include <direct.h>
+#else
+#include <xtl.h>
+#include <direct.h>
+#endif
 #else
 #include <dirent.h>
 #include <unistd.h>

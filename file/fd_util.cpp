@@ -9,6 +9,10 @@
 #ifdef __SYMBIAN32__
 #include <sys/select.h>
 #endif
+#elif defined(_XBOX)
+#include <xtl.h>
+#include <winsockx.h>
+#include <io.h>
 #else
 #include <io.h>
 #include <winsock2.h>

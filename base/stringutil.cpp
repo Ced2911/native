@@ -1,4 +1,6 @@
-#ifdef _WIN32
+#ifdef _XBOX
+#include <xtl.h>
+#elif defined(_WIN32)
 #include <windows.h>
 #endif
 #include <string.h>

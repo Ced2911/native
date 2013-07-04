@@ -10,7 +10,11 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
+#ifndef _XBOX
 #include <windows.h>
+#else
+#include <xtl.h>
+#endif
 
 // Zap stupid windows defines
 // Should move these somewhere clever.
