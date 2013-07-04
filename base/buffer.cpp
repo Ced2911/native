@@ -5,7 +5,12 @@
 #include <algorithm>
 
 #ifdef _WIN32
+#ifndef _XBOX
 #include <winsock2.h>
+#else
+#include <xtl.h>
+#include <winsockx.h>
+#endif
 #undef min
 #undef max
 #else
