@@ -11,11 +11,16 @@
 
 #undef Crash
 
+#ifdef _XBOX
+#include <xtl.h>
+#endif
 #include <stdio.h>
 // Logging
 #ifdef _WIN32
 
-#ifdef _M_X64
+#ifdef _XBOX
+inline void Crash() { DebugBreak(); }
+#elif defined(_M_X64)
 inline void Crash() { /*DebugBreak();*/ }
 #else
 inline void Crash() { __asm { int 3 }; }

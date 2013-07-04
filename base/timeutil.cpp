@@ -3,7 +3,11 @@
 #include "base/timeutil.h"
 
 #ifdef _WIN32
+#ifndef _XBOX
 #include <windows.h>
+#else
+#include <xtl.h>
+#endif
 #else
 #include <sys/time.h>
 #include <unistd.h>
