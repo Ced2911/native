@@ -1,9 +1,14 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
+#ifndef _XBOX
 #include <Windows.h>
 #include <direct.h>
 #ifndef strcasecmp
 #define strcasecmp _stricmp
+#endif
+#else
+#include <xtl.h>
+#include <direct.h>
 #endif
 #else
 #include <dirent.h>
@@ -25,6 +30,18 @@
 #if defined(__FreeBSD__) || defined(__APPLE__) || defined(__SYMBIAN32__)
 #define stat64 stat
 #endif
+
+std::string nativePath(std::string path) {
+	#if defined(_WIN32)
+    char separ = '/';
+    char native = '\\';
+#else
+    char separ = '\\';
+    char native = '/';
+#endif
+    std::replace(path.begin(), path.end(), separ, native);
+    return path;
+}
 
 // Hack
 #ifdef __SYMBIAN32__
@@ -143,7 +160,7 @@ static void stripTailDirSlashes(std::string &fname)
 bool exists(const std::string &filename)
 {
 #ifdef _WIN32
-	return GetFileAttributes(filename.c_str()) != 0xFFFFFFFF;
+	return GetFileAttributes(nativePath(filename).c_str()) != 0xFFFFFFFF;
 #else
 	struct stat64 file_info;
 
@@ -171,7 +188,7 @@ bool getFileInfo(const char *path, FileInfo *fileInfo)
 
 #ifdef _WIN32
 	WIN32_FILE_ATTRIBUTE_DATA attrs;
-	if (!GetFileAttributesExA(path, GetFileExInfoStandard, &attrs)) {
+	if (!GetFileAttributesExA(nativePath(path).c_str(), GetFileExInfoStandard, &attrs)) {
 		fileInfo->size = 0;
 		fileInfo->isDirectory = false;
 		fileInfo->exists = false;
