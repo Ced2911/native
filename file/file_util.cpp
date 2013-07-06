@@ -28,6 +28,18 @@
 #define stat64 stat
 #endif
 
+std::string nativePath(std::string path) {
+	#if defined(_WIN32)
+    char separ = '/';
+    char native = '\\';
+#else
+    char separ = '\\';
+    char native = '/';
+#endif
+    std::replace(path.begin(), path.end(), separ, native);
+    return path;
+}
+
 // Hack
 #ifdef __SYMBIAN32__
 static inline int readdir_r(DIR *dirp, struct dirent *entry, struct dirent **result) {
@@ -145,7 +157,7 @@ static void stripTailDirSlashes(std::string &fname)
 bool exists(const std::string &filename)
 {
 #ifdef _WIN32
-	return GetFileAttributes(filename.c_str()) != 0xFFFFFFFF;
+	return GetFileAttributes(nativePath(filename).c_str()) != 0xFFFFFFFF;
 #else
 	struct stat64 file_info;
 
@@ -173,7 +185,7 @@ bool getFileInfo(const char *path, FileInfo *fileInfo)
 
 #ifdef _WIN32
 	WIN32_FILE_ATTRIBUTE_DATA attrs;
-	if (!GetFileAttributesExA(path, GetFileExInfoStandard, &attrs)) {
+	if (!GetFileAttributesExA(nativePath(path).c_str(), GetFileExInfoStandard, &attrs)) {
 		fileInfo->size = 0;
 		fileInfo->isDirectory = false;
 		fileInfo->exists = false;

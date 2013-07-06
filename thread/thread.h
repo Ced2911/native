@@ -32,6 +32,8 @@
 #define NOMINMAX
 #ifndef _XBOX
 #include <Windows.h>
+#else
+#include <xtl.h>
 #endif
 
 #if defined(_MSC_VER) && defined(_MT)
