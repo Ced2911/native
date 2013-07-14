@@ -65,9 +65,15 @@ int LoadZIMPtr(uint8_t *zim, int datasize, int *width, int *height, int *flags, 
 		ELOG("Not a ZIM file");
 		return 0;
 	}
+#ifndef _XBOX
 	memcpy(width, zim + 4, 4);
 	memcpy(height, zim + 8, 4);
 	memcpy(flags, zim + 12, 4);
+#else
+	*width = __loadwordbytereverse(4, zim);
+	*height = __loadwordbytereverse(8, zim);
+	*flags = __loadwordbytereverse(12, zim);
+#endif
 
 	int num_levels = 1;
 	int image_data_size[ZIM_MAX_MIP_LEVELS];
