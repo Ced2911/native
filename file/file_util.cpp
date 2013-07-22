@@ -9,6 +9,9 @@
 #else
 #include <xtl.h>
 #include <direct.h>
+#ifndef strcasecmp
+#define strcasecmp _stricmp
+#endif
 #endif
 #else
 #include <dirent.h>
@@ -394,7 +397,7 @@ void mkDir(const std::string &path)
 #endif
 }
 
-#ifdef _WIN32
+#if defined(_WIN32) && !(defined(_XBOX))
 // Returns a vector with the device names
 std::vector<std::string> getWindowsDrives()
 {
