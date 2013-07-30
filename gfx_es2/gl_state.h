@@ -4,6 +4,43 @@
 #include <string.h>
 #include "gfx/gl_common.h"
 
+#ifdef USING_GLES2
+
+#ifdef ANDROID
+// Additional extensions not included in GLES2/gl2ext.h from the NDK
+
+/* GL_QCOM_alpha_test */
+#define GL_ALPHA_TEST_QCOM                                      0x0BC0
+#define GL_ALPHA_TEST_FUNC_QCOM                                 0x0BC1
+#define GL_ALPHA_TEST_REF_QCOM                                  0x0BC2
+
+typedef void (GL_APIENTRYP PFNGLALPHAFUNCQCOMPROC) (GLenum func, GLclampf ref);
+extern PFNGLALPHAFUNCQCOMPROC glAlphaFuncQCOM;
+
+typedef uint64_t EGLuint64NV;
+typedef EGLuint64NV (EGLAPIENTRYP PFNEGLGETSYSTEMTIMEFREQUENCYNVPROC) (void);
+typedef EGLuint64NV (EGLAPIENTRYP PFNEGLGETSYSTEMTIMENVPROC) (void);
+extern PFNEGLGETSYSTEMTIMEFREQUENCYNVPROC eglGetSystemTimeFrequencyNV;
+extern PFNEGLGETSYSTEMTIMENVPROC eglGetSystemTimeNV;
+
+#endif
+
+#if !defined(IOS) && !defined(__SYMBIAN32__) && !defined(MEEGO_EDITION_HARMATTAN)
+extern PFNGLDISCARDFRAMEBUFFEREXTPROC glDiscardFramebufferEXT;
+extern PFNGLGENVERTEXARRAYSOESPROC glGenVertexArraysOES;
+extern PFNGLBINDVERTEXARRAYOESPROC glBindVertexArrayOES;
+extern PFNGLDELETEVERTEXARRAYSOESPROC glDeleteVertexArraysOES;
+extern PFNGLISVERTEXARRAYOESPROC glIsVertexArrayOES;
+#endif
+
+// Rename standard functions to the OES version.
+#define glGenVertexArrays glGenVertexArraysOES
+#define glBindVertexArray glBindVertexArrayOES
+#define glDeleteVertexArrays glDeleteVertexArraysOES
+#define glIsVertexArray glIsVertexArrayOES
+
+#endif /* EGL_NV_system_time */
+
 
 // OpenGL state cache. Should convert all code to use this instead of directly calling glEnable etc,
 // as GL state changes can be expensive on some hardware.
@@ -210,6 +247,12 @@ struct GLExtensions {
 	bool EXT_swap_control_tear;
 	bool QCOM_alpha_test;
 	bool OES_mapbuffer;
+	bool OES_vertex_array_object;
+	
+	// EGL extensions
+
+	bool EGL_NV_system_time;
+	bool EGL_NV_coverage_sample;
 };
 
 extern GLExtensions gl_extensions;
