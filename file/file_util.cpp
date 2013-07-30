@@ -2,13 +2,12 @@
 #define WIN32_LEAN_AND_MEAN
 #ifndef _XBOX
 #include <Windows.h>
+#else
+#include <xtl.h>
+#endif
 #include <direct.h>
 #ifndef strcasecmp
 #define strcasecmp _stricmp
-#endif
-#else
-#include <xtl.h>
-#include <direct.h>
 #endif
 #else
 #include <dirent.h>
@@ -394,7 +393,7 @@ void mkDir(const std::string &path)
 #endif
 }
 
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(_XBOX)
 // Returns a vector with the device names
 std::vector<std::string> getWindowsDrives()
 {
