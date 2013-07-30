@@ -10,6 +10,10 @@
 #define strcasecmp _stricmp
 #endif
 #else
+#include <xtl.h>
+#include <direct.h>
+#endif
+#else
 #include <dirent.h>
 #include <unistd.h>
 #include <errno.h>
