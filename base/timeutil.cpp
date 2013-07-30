@@ -2,8 +2,10 @@
 #include "base/logging.h"
 #include "base/timeutil.h"
 
+#ifdef ANDROID
 // For NV time functions. Ugly!
 #include "gfx_es2/gl_state.h"
+#endif
 
 #ifdef _WIN32
 #ifndef _XBOX
