@@ -23,6 +23,7 @@ public:
 	// Pass through external events to children.
 	virtual void Key(const KeyInput &input);
 	virtual void Touch(const TouchInput &input);
+	virtual void Axis(const AxisInput &input);
 
 	// By default, a container will layout to its own bounds.
 	virtual void Measure(const UIContext &dc, MeasureSpec horiz, MeasureSpec vert) = 0;
@@ -41,6 +42,7 @@ public:
 
 	virtual bool SetFocus();
 	virtual bool SubviewFocused(View *view);
+	virtual void RemoveSubview(View *view);
 
 	// Assumes that layout has taken place.
 	NeighborResult FindNeighbor(View *view, FocusDirection direction, NeighborResult best);
@@ -56,6 +58,7 @@ public:
 	void SetHasDropShadow(bool has) { hasDropShadow_ = has; }
 
 protected:
+	recursive_mutex modifyLock_;  // Hold this when changing the subviews.
 	std::vector<View *> views_;
 	Drawable bg_;
 	bool hasDropShadow_;
@@ -80,7 +83,9 @@ public:
 		: LayoutParams(w, h, LP_ANCHOR), left(l), top(t), right(r), bottom(b), center(c) {
 
 	}
-
+	AnchorLayoutParams(Size w, Size h, bool c = false)
+		: LayoutParams(w, h, LP_ANCHOR), left(0), top(0), right(NONE), bottom(NONE), center(c) {
+	}
 	AnchorLayoutParams(float l, float t, float r, float b, bool c = false)
 		: LayoutParams(WRAP_CONTENT, WRAP_CONTENT, LP_ANCHOR), left(l), top(t), right(r), bottom(b), center(c) {}
 
@@ -191,6 +196,7 @@ public:
 
 	void ScrollTo(float newScrollPos);
 	void ScrollRelative(float distance);
+	bool CanScroll() const;
 	void Update(const InputState &input_state);
 
 	// Override so that we can scroll to the active one after moving the focus.
@@ -221,6 +227,8 @@ public:
 	void AddChoice(const std::string &title);
 	int GetSelection() const { return selected_; }
 	void SetSelection(int sel);
+	virtual void Key(const KeyInput &input);
+
 	Event OnChoice;
 
 private:
@@ -329,5 +337,9 @@ private:
 
 void LayoutViewHierarchy(const UIContext &dc, ViewGroup *root);
 void UpdateViewHierarchy(const InputState &input_state, ViewGroup *root);
+// Hooks arrow keys for navigation
+void KeyEvent(const KeyInput &key, ViewGroup *root);
+void TouchEvent(const TouchInput &touch, ViewGroup *root);
+void AxisEvent(const AxisInput &axis, ViewGroup *root);
 
 }  // namespace UI

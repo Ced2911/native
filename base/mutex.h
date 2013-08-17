@@ -15,6 +15,7 @@
 #else
 #include <xtl.h>
 #endif
+#include <limits.h>
 
 // Zap stupid windows defines
 // Should move these somewhere clever.
@@ -178,6 +179,8 @@ private:
 #endif
 };
 
+// Win32 CONDITION_VARIABLE is Vista+ only. We thus limit it to our 64-bit builds where
+// we can be almost certain that the user isn't running XP.
 
 class condition_variable {
 public:
@@ -186,14 +189,21 @@ public:
 #endif
 	condition_variable() {
 #ifdef _WIN32
-		event_ = CreateEvent(0, FALSE, FALSE, 0);
+#ifdef _WIN64
+		InitializeConditionVariable(&cond_);
+#else
+		sema_ = CreateSemaphore(NULL, 0, LONG_MAX, NULL);
+#endif
 #else
 		pthread_cond_init(&event_, NULL);
 #endif
 	}
 	~condition_variable() {
 #ifdef _WIN32
-		CloseHandle(event_);
+#ifdef _WIN64
+#else
+		CloseHandle(sema_);
+#endif
 #else
 		pthread_cond_destroy(&event_);
 #endif
@@ -201,22 +211,32 @@ public:
 
 	void notify_one() {
 #ifdef _WIN32
-		SetEvent(event_);
+#ifdef _M_X64
+		WakeConditionVariable(&cond_);
+#else
+		ReleaseSemaphore(sema_, 1, NULL);
+#endif
 #else
 		pthread_cond_signal(&event_);
 #endif
 	}
 
 	// notify_all is not really possible to implement with win32 events?
+	// Can be done just fine using WakeAllConditionVariable though.
 
 	void wait(recursive_mutex &mtx) {
-		// broken
+		// broken http://msdn.microsoft.com/en-us/library/windows/desktop/ms686301(v=vs.85).aspx
 #ifdef _WIN32
-		// This has to be horribly racy.
+#ifdef _M_X64
+		SleepConditionVariableCS(&cond_, &mtx.native_handle(), INFINITE);
+#else
+		// Since a semaphore keeps a count, the window between unlock and lock won't cause us to deadlock.
+		// However, we could wake early incorrectly (if the semaphore is signalled already.)
+		// That's better than deadlocking or forgetting to wake.
 		mtx.unlock();
-		WaitForSingleObject(event_, INFINITE);
-		ResetEvent(event_); // necessary?
+		WaitForSingleObject(sema_, INFINITE);
 		mtx.lock();
+#endif
 #else
 		pthread_cond_wait(&event_, &mtx.native_handle());
 #endif
@@ -224,10 +244,16 @@ public:
 
 	void wait_for(recursive_mutex &mtx, int milliseconds) {
 #ifdef _WIN32
-		//mtx.unlock();
-		WaitForSingleObject(event_, milliseconds);
-		ResetEvent(event_); // necessary?
-		// mtx.lock();
+#ifdef _M_X64
+		SleepConditionVariableCS(&cond_, &mtx.native_handle(), milliseconds);
+#else
+		// Since a semaphore keeps a count, the window between unlock and lock won't cause us to deadlock.
+		// However, we could wake early incorrectly (if the semaphore is signalled already.)
+		// That's better than deadlocking or forgetting to wake.
+		mtx.unlock();
+		WaitForSingleObject(sema_, milliseconds);
+		mtx.lock();
+#endif
 #else
 		timespec timeout;
 #ifdef __APPLE__
@@ -246,7 +272,11 @@ public:
 
 private:
 #ifdef _WIN32
-	HANDLE event_;
+#ifdef _M_X64
+	CONDITION_VARIABLE cond_;
+#else
+	HANDLE sema_;
+#endif
 #else
 	pthread_cond_t event_;
 #endif

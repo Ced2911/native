@@ -23,6 +23,7 @@
 
 struct KeyInput;
 struct TouchInput;
+struct AxisInput;
 struct InputState;
 
 class DrawBuffer;
@@ -81,6 +82,7 @@ struct Theme {
 	int checkOff;
 	int sliderKnob;
 	int whiteImage;
+	int dropShadow4Grid;
 
 	Style buttonStyle;
 	Style buttonFocusedStyle;
@@ -90,6 +92,11 @@ struct Theme {
 	Style itemStyle;
 	Style itemDownStyle;
 	Style itemFocusedStyle;
+	Style itemDisabledStyle;
+
+	Style headerStyle;
+
+	Style popupTitle;
 };
 
 // The four cardinal directions should be enough, plus Prev/Next in "element order".
@@ -276,7 +283,8 @@ public:
 	// touch response from the frame rate.
 	virtual void Key(const KeyInput &input) = 0;
 	virtual void Touch(const TouchInput &input) = 0;
-	virtual void Update(const InputState &input_state) = 0;
+	virtual void Axis(const AxisInput &input) {}
+	virtual void Update(const InputState &input_state) {}
 
 	virtual void FocusChanged(int focusFlags) {}
 
@@ -371,7 +379,6 @@ public:
 
 	virtual void Key(const KeyInput &input);
 	virtual void Touch(const TouchInput &input);
-	virtual void Update(const InputState &input_state);
 
 	virtual void FocusChanged(int focusFlags);
 
@@ -477,7 +484,9 @@ public:
 // Use to trigger something or open a submenu screen.
 class Choice : public ClickableItem {
 public:
-	Choice(const std::string &text, const std::string &smallText = "", bool selected = false, LayoutParams *layoutParams = 0)
+	Choice(const std::string &text, LayoutParams *layoutParams = 0)
+		: ClickableItem(layoutParams), text_(text), smallText_(), selected_(false) {}
+	Choice(const std::string &text, const std::string &smallText, bool selected = false, LayoutParams *layoutParams = 0)
 		: ClickableItem(layoutParams), text_(text), smallText_(smallText), selected_(selected) {}
 
 	virtual void GetContentDimensions(const UIContext &dc, float &w, float &h) const;
@@ -496,8 +505,8 @@ public:
 	StickyChoice(const std::string &text, const std::string &smallText = "", LayoutParams *layoutParams = 0)
 		: Choice(text, smallText, false, layoutParams) {}
 
-	virtual void Key(const KeyInput &input);
-	virtual void Touch(const TouchInput &input);
+	virtual void Key(const KeyInput &key);
+	virtual void Touch(const TouchInput &touch);
 	virtual void FocusChanged(int focusFlags);
 
 	void Press() { down_ = true; dragging_ = false; }
@@ -523,6 +532,18 @@ public:
 		: Item(layoutParams), text_(text) {
 		layoutParams_->width = FILL_PARENT;
 		layoutParams_->height = 26;
+	}
+	virtual void Draw(UIContext &dc);
+private:
+	std::string text_;
+};
+
+class PopupHeader : public Item {
+public:
+	PopupHeader(const std::string &text, LayoutParams *layoutParams = 0)
+		: Item(layoutParams), text_(text) {
+			layoutParams_->width = FILL_PARENT;
+			layoutParams_->height = 64;
 	}
 	virtual void Draw(UIContext &dc);
 private:
@@ -564,8 +585,11 @@ public:
 
 class TextView : public InertView {
 public:
-	TextView(int font, const std::string &text, int textAlign, float textScale, LayoutParams *layoutParams = 0)
-		: InertView(layoutParams), font_(font), text_(text), textScaleX_(textScale), textScaleY_(textScale), textAlign_(textAlign) {}
+	TextView(const std::string &text, LayoutParams *layoutParams = 0) 
+		: InertView(layoutParams), text_(text), textScaleX_(1.0f), textScaleY_(1.0f), textAlign_(0) {}
+
+	TextView(const std::string &text, int textAlign, float textScale, LayoutParams *layoutParams = 0)
+		: InertView(layoutParams), text_(text), textScaleX_(textScale), textScaleY_(textScale), textAlign_(textAlign) {}
 
 	virtual void GetContentDimensions(const UIContext &dc, float &w, float &h) const;
 	virtual void Draw(UIContext &dc);
@@ -574,7 +598,6 @@ public:
 	void SetTextScale(float scale) { textScaleX_ = scale; textScaleY_ = scale; }
 
 private:
-	int font_;
 	std::string text_;
 	float textScaleX_;
 	float textScaleY_;
@@ -662,5 +685,7 @@ void MeasureBySpec(Size sz, float contentWidth, MeasureSpec spec, float *measure
 
 void EventTriggered(Event *e, EventParams params);
 void DispatchEvents();
+bool IsAcceptKeyCode(int keyCode);
+bool IsEscapeKeyCode(int keyCode);
 
 }  // namespace

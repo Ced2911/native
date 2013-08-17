@@ -1,10 +1,11 @@
-
+#include "input/input_state.h"
+#include "input/keycodes.h"
 #include "ui/ui_screen.h"
 #include "ui/ui_context.h"
 #include "ui/screen.h"
 
 UIScreen::UIScreen()
-	: Screen(), root_(0), recreateViews_(true) {
+	: Screen(), root_(0), recreateViews_(true), hatDown_(0) {
 }
 
 void UIScreen::DoRecreateViews() {
@@ -21,8 +22,6 @@ void UIScreen::update(InputState &input) {
 
 	if (root_) {
 		UpdateViewHierarchy(input, root_);
-	} else {
-		ELOG("Tried to update without a view root");
 	}
 }
 
@@ -37,26 +36,63 @@ void UIScreen::render() {
 		root_->Draw(*screenManager()->getUIContext());
 		screenManager()->getUIContext()->End();
 		screenManager()->getUIContext()->Flush();
-	} else {
-		ELOG("Tried to render without a view root");
 	}
 }
 
 void UIScreen::touch(const TouchInput &touch) {
 	if (root_) {
-		root_->Touch(touch);
-	} else {
-		ELOG("Tried to touch without a view root");
+		UI::TouchEvent(touch, root_);
 	}
 }
 
 void UIScreen::key(const KeyInput &key) {
 	if (root_) {
-		root_->Key(key);
-	} else {
-		ELOG("Tried to key without a view root");
+		UI::KeyEvent(key, root_);
 	}
 }
+
+void DialogScreen::key(const KeyInput &key) {
+	if ((key.flags & KEY_DOWN) && key.keyCode == NKCODE_ESCAPE || key.keyCode == NKCODE_BACK || key.keyCode == NKCODE_BUTTON_B) {
+		screenManager()->finishDialog(this, DR_CANCEL);
+	} else {
+		UIScreen::key(key);
+	}
+}
+
+void UIScreen::axis(const AxisInput &axis) {
+	// Simple translation of hat to keys for Shield and other modern pads.
+	// TODO: Use some variant of keymap?
+	int flags = 0;
+	if (axis.axisId == JOYSTICK_AXIS_HAT_X) {
+		if (axis.value < -0.7f)
+			flags |= PAD_BUTTON_LEFT;
+		if (axis.value > 0.7f)
+			flags |= PAD_BUTTON_RIGHT;
+	}
+	if (axis.axisId == JOYSTICK_AXIS_HAT_Y) {
+		if (axis.value < -0.7f)
+			flags |= PAD_BUTTON_UP;
+		if (axis.value > 0.7f)
+			flags |= PAD_BUTTON_DOWN;
+	}
+
+	// Yeah yeah, this should be table driven..
+	int pressed = flags & ~hatDown_;
+	int released = ~flags & hatDown_;
+	if (pressed & PAD_BUTTON_LEFT) key(KeyInput(DEVICE_ID_KEYBOARD, NKCODE_DPAD_LEFT, KEY_DOWN));
+	if (pressed & PAD_BUTTON_RIGHT) key(KeyInput(DEVICE_ID_KEYBOARD, NKCODE_DPAD_RIGHT, KEY_DOWN));
+	if (pressed & PAD_BUTTON_UP) key(KeyInput(DEVICE_ID_KEYBOARD, NKCODE_DPAD_UP, KEY_DOWN));
+	if (pressed & PAD_BUTTON_DOWN) key(KeyInput(DEVICE_ID_KEYBOARD, NKCODE_DPAD_DOWN, KEY_DOWN));
+	if (released & PAD_BUTTON_LEFT) key(KeyInput(DEVICE_ID_KEYBOARD, NKCODE_DPAD_LEFT, KEY_UP));
+	if (released & PAD_BUTTON_RIGHT) key(KeyInput(DEVICE_ID_KEYBOARD, NKCODE_DPAD_RIGHT, KEY_UP));
+	if (released & PAD_BUTTON_UP) key(KeyInput(DEVICE_ID_KEYBOARD, NKCODE_DPAD_UP, KEY_UP));
+	if (released & PAD_BUTTON_DOWN) key(KeyInput(DEVICE_ID_KEYBOARD, NKCODE_DPAD_DOWN, KEY_UP));
+	hatDown_ = flags;
+	if (root_) {
+		UI::AxisEvent(axis, root_);
+	}
+}
+
 
 UI::EventReturn UIScreen::OnBack(UI::EventParams &e) {
 	screenManager()->finishDialog(this, DR_OK);
@@ -64,42 +100,68 @@ UI::EventReturn UIScreen::OnBack(UI::EventParams &e) {
 }
 
 
-PopupScreen::PopupScreen(const std::string &title)
-	: title_(title) {}
+PopupScreen::PopupScreen(std::string title, std::string button1, std::string button2)
+	: title_(title), button1_(button1), button2_(button2) {}
 
 void PopupScreen::CreateViews() {
 	using namespace UI;
 
 	root_ = new AnchorLayout(new LayoutParams(FILL_PARENT, FILL_PARENT));
-	LinearLayout *box = new LinearLayout(ORIENT_VERTICAL, new AnchorLayoutParams(30, 30, 30, 30));
+
+	LinearLayout *box = new LinearLayout(ORIENT_VERTICAL, 
+		new AnchorLayoutParams(550, FillVertical() ? dp_yres - 30 : WRAP_CONTENT, dp_xres / 2, dp_yres / 2, NONE, NONE, true));
 
 	root_->Add(box);
 	box->SetBG(UI::Drawable(0xFF303030));
 	box->SetHasDropShadow(true);
 
-	View *title = new ItemHeader(title_);
+	View *title = new PopupHeader(title_);
 	box->Add(title);
 
 	CreatePopupContents(box);
 
-	// And the two buttons at the bottom.
-	ViewGroup *buttonRow = new LinearLayout(ORIENT_HORIZONTAL);
-	buttonRow->Add(new Button("OK", new LinearLayoutParams(1.0f)))->OnClick.Handle(this, &PopupScreen::OnOK);
-	buttonRow->Add(new Button("Cancel", new LinearLayoutParams(1.0f)))->OnClick.Handle(this, &PopupScreen::OnCancel);
-	box->Add(buttonRow);
+	if (ShowButtons()) {
+		// And the two buttons at the bottom.
+		LinearLayout *buttonRow = new LinearLayout(ORIENT_HORIZONTAL, new LinearLayoutParams(200, WRAP_CONTENT));
+		buttonRow->SetSpacing(0);
+		Margins buttonMargins(5, 5);
+
+		// Adjust button order to the platform default.
+#if defined(_WIN32)
+		buttonRow->Add(new Button(button1_, new LinearLayoutParams(1.0f, buttonMargins)))->OnClick.Handle(this, &PopupScreen::OnOK);
+		if (!button2_.empty())
+			buttonRow->Add(new Button(button2_, new LinearLayoutParams(1.0f, buttonMargins)))->OnClick.Handle(this, &PopupScreen::OnCancel);
+#else
+		if (!button2_.empty())
+			buttonRow->Add(new Button(button2_, new LinearLayoutParams(1.0f)))->OnClick.Handle(this, &PopupScreen::OnCancel);
+		buttonRow->Add(new Button(button1_, new LinearLayoutParams(1.0f)))->OnClick.Handle(this, &PopupScreen::OnOK);
+#endif
+
+		box->Add(buttonRow);
+	}
+}
+
+void PopupScreen::key(const KeyInput &key) {
+	if ((key.flags & KEY_DOWN) && UI::IsEscapeKeyCode(key.keyCode))
+		screenManager()->finishDialog(this, DR_CANCEL);
+	UIScreen::key(key);
+}
+
+void MessagePopupScreen::CreatePopupContents(UI::ViewGroup *parent) {
+	parent->Add(new UI::TextView(message_));
 }
 
 UI::EventReturn PopupScreen::OnOK(UI::EventParams &e) {
-	OnCompleted();
+	OnCompleted(DR_OK);
 	screenManager()->finishDialog(this, DR_OK);
 	return UI::EVENT_DONE;
 }
 
 UI::EventReturn PopupScreen::OnCancel(UI::EventParams &e) {
+	OnCompleted(DR_CANCEL);
 	screenManager()->finishDialog(this, DR_CANCEL);
 	return UI::EVENT_DONE;
 }
-
 
 void ListPopupScreen::CreatePopupContents(UI::ViewGroup *parent) {
 	using namespace UI;
@@ -110,20 +172,32 @@ void ListPopupScreen::CreatePopupContents(UI::ViewGroup *parent) {
 
 UI::EventReturn ListPopupScreen::OnListChoice(UI::EventParams &e) {
 	adaptor_.SetSelected(e.a);
+	if (callback_)
+		callback_(adaptor_.GetSelected());	
+	screenManager()->finishDialog(this, DR_OK);
+	OnCompleted(DR_OK);
 	OnChoice.Dispatch(e);
 	return UI::EVENT_DONE;
 }
 
-void ListPopupScreen::OnCompleted() {
-	callback_(adaptor_.GetSelected());	
-}
-
 void SliderPopupScreen::CreatePopupContents(UI::ViewGroup *parent) {
 	using namespace UI;
-	slider_ = parent->Add(new Slider(value_, minValue_, maxValue_));
+	sliderValue_ = *value_;
+	slider_ = parent->Add(new Slider(&sliderValue_, minValue_, maxValue_, new LinearLayoutParams(UI::Margins(10, 5))));
 }
 
 void SliderFloatPopupScreen::CreatePopupContents(UI::ViewGroup *parent) {
 	using namespace UI;
-	slider_ = parent->Add(new SliderFloat(value_, minValue_, maxValue_));
+	sliderValue_ = *value_;
+	slider_ = parent->Add(new SliderFloat(&sliderValue_, minValue_, maxValue_));
+}
+
+void SliderPopupScreen::OnCompleted(DialogResult result) {
+	if (result == DR_OK)
+		*value_ = sliderValue_;
+}
+
+void SliderFloatPopupScreen::OnCompleted(DialogResult result) {
+	if (result == DR_OK)
+		*value_ = sliderValue_;
 }

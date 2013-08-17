@@ -1,6 +1,7 @@
 #include "base/display.h"
 #include "base/functional.h"
 #include "base/logging.h"
+#include "base/mutex.h"
 #include "input/keycodes.h"
 #include "ui/ui_context.h"
 #include "ui/view.h"
@@ -33,7 +34,19 @@ ViewGroup::~ViewGroup() {
 	Clear();
 }
 
+void ViewGroup::RemoveSubview(View *view) {
+	lock_guard guard(modifyLock_);
+	for (size_t i = 0; i < views_.size(); i++) {
+		if (views_[i] == view) {
+			views_.erase(views_.begin() + i);
+			delete view;
+			return;
+		}
+	}
+}
+
 void ViewGroup::Clear() {
+	lock_guard guard(modifyLock_);
 	for (size_t i = 0; i < views_.size(); i++) {
 		delete views_[i];
 		views_[i] = 0;
@@ -42,6 +55,7 @@ void ViewGroup::Clear() {
 }
 
 void ViewGroup::Touch(const TouchInput &input) {
+	lock_guard guard(modifyLock_);
 	for (auto iter = views_.begin(); iter != views_.end(); ++iter) {
 		// TODO: If there is a transformation active, transform input coordinates accordingly.
 		if ((*iter)->GetVisibility() == V_VISIBLE)
@@ -50,6 +64,7 @@ void ViewGroup::Touch(const TouchInput &input) {
 }
 
 void ViewGroup::Key(const KeyInput &input) {
+	lock_guard guard(modifyLock_);
 	for (auto iter = views_.begin(); iter != views_.end(); ++iter) {
 		// TODO: If there is a transformation active, transform input coordinates accordingly.
 		if ((*iter)->GetVisibility() == V_VISIBLE)
@@ -57,11 +72,22 @@ void ViewGroup::Key(const KeyInput &input) {
 	}
 }
 
+void ViewGroup::Axis(const AxisInput &input) {
+	lock_guard guard(modifyLock_);
+	for (auto iter = views_.begin(); iter != views_.end(); ++iter) {
+		// TODO: If there is a transformation active, transform input coordinates accordingly.
+		if ((*iter)->GetVisibility() == V_VISIBLE)
+			(*iter)->Axis(input);
+	}
+}
 
 void ViewGroup::Draw(UIContext &dc) {
 	if (hasDropShadow_) {
 		// Darken things behind.
 		dc.FillRect(UI::Drawable(0x60000000), Bounds(0,0,dp_xres, dp_yres));
+		float dropsize = 30;
+		dc.Draw()->DrawImage4Grid(dc.theme->dropShadow4Grid, bounds_.x - dropsize, bounds_.y, bounds_.x2() + dropsize, bounds_.y2()+dropsize*1.5, 	0xDF000000, 3.0f);
+
 		// dc.Draw()->DrawImage4Grid(dc.theme->dropShadow, )
 	}
 
@@ -85,6 +111,7 @@ void ViewGroup::Update(const InputState &input_state) {
 }
 
 bool ViewGroup::SetFocus() {
+	lock_guard guard(modifyLock_);
 	if (!CanBeFocused() && !views_.empty()) {
 		for (size_t i = 0; i < views_.size(); i++) {
 			if (views_[i]->SetFocus())
@@ -319,10 +346,13 @@ void LinearLayout::Measure(const UIContext &dc, MeasureSpec horiz, MeasureSpec v
 			const LinearLayoutParams *linLayoutParams = static_cast<const LinearLayoutParams *>(layoutParams);
 			if (!linLayoutParams->Is(LP_LINEAR)) linLayoutParams = 0;
 
-			if (linLayoutParams && linLayoutParams->weight > 0.0f)
-				views_[i]->Measure(dc, MeasureSpec(EXACTLY, unit * linLayoutParams->weight), MeasureSpec(EXACTLY, measuredHeight_));
+			if (linLayoutParams && linLayoutParams->weight > 0.0f) {
+				int marginSum = linLayoutParams->margins.left + linLayoutParams->margins.right;
+				views_[i]->Measure(dc, MeasureSpec(EXACTLY, unit * linLayoutParams->weight - marginSum), MeasureSpec(EXACTLY, measuredHeight_));
+			}
 		}
 	} else {
+		//MeasureBySpec(layoutParams_->height, vert.type == UNSPECIFIED ? sum : weightZeroSum, vert, &measuredHeight_);
 		MeasureBySpec(layoutParams_->height, weightZeroSum, vert, &measuredHeight_);
 		MeasureBySpec(layoutParams_->width, maxOther, horiz, &measuredWidth_);
 
@@ -334,8 +364,10 @@ void LinearLayout::Measure(const UIContext &dc, MeasureSpec horiz, MeasureSpec v
 			const LinearLayoutParams *linLayoutParams = static_cast<const LinearLayoutParams *>(layoutParams);
 			if (!linLayoutParams->Is(LP_LINEAR)) linLayoutParams = 0;
 
-			if (linLayoutParams && linLayoutParams->weight > 0.0f)
-				views_[i]->Measure(dc, MeasureSpec(EXACTLY, measuredWidth_), MeasureSpec(EXACTLY, unit * linLayoutParams->weight));
+			if (linLayoutParams && linLayoutParams->weight > 0.0f) {
+				int marginSum = linLayoutParams->margins.top + linLayoutParams->margins.bottom;
+				views_[i]->Measure(dc, MeasureSpec(EXACTLY, measuredWidth_), MeasureSpec(EXACTLY, unit * linLayoutParams->weight - marginSum));
+			}
 		}
 	}
 }
@@ -431,7 +463,7 @@ void ScrollView::Measure(const UIContext &dc, MeasureSpec horiz, MeasureSpec ver
 		margins = linLayoutParams->margins;
 	}
 
-	// The scroll view itself simply obeys its parent.
+	// The scroll view itself simply obeys its parent - but also tries to fit the child if possible.
 	MeasureBySpec(layoutParams_->width, 0.0f, horiz, &measuredWidth_);
 	MeasureBySpec(layoutParams_->height, 0.0f, vert, &measuredHeight_);
 
@@ -440,6 +472,8 @@ void ScrollView::Measure(const UIContext &dc, MeasureSpec horiz, MeasureSpec ver
 	} else {
 		views_[0]->Measure(dc, MeasureSpec(AT_MOST, measuredWidth_ - (margins.left + margins.right)), MeasureSpec(UNSPECIFIED));
 	}
+	if (orientation_ == ORIENT_VERTICAL && vert.type != EXACTLY && measuredHeight_ < views_[0]->GetBounds().h)
+		measuredHeight_ = views_[0]->GetBounds().h;
 }
 
 void ScrollView::Layout() {
@@ -472,16 +506,17 @@ void ScrollView::Layout() {
 }
 
 void ScrollView::Key(const KeyInput &input) {
-	if (input.flags  & KEY_DOWN) {
+	if (input.flags & KEY_DOWN) {
 		switch (input.keyCode) {
-		case KEYCODE_EXT_MOUSEWHEEL_UP:
+		case NKCODE_EXT_MOUSEWHEEL_UP:
 			ScrollRelative(-250);
 			break;
-		case KEYCODE_EXT_MOUSEWHEEL_DOWN:
+		case NKCODE_EXT_MOUSEWHEEL_DOWN:
 			ScrollRelative(250);
 			break;
 		}
 	}
+	ViewGroup::Key(input);
 }
 
 void ScrollView::Touch(const TouchInput &input) {
@@ -489,21 +524,26 @@ void ScrollView::Touch(const TouchInput &input) {
 		scrollStart_ = scrollPos_;
 	}
 	
-	TouchInput input2 = gesture_.Update(input, bounds_);
+	TouchInput input2;
+	if (CanScroll()) {
+		input2 = gesture_.Update(input, bounds_);
+		if (gesture_.IsGestureActive(GESTURE_DRAG_VERTICAL)) {
+			float info[4];
+			gesture_.GetGestureInfo(GESTURE_DRAG_VERTICAL, info);
 
-	if (gesture_.IsGestureActive(GESTURE_DRAG_VERTICAL)) {
-		float info[4];
-		gesture_.GetGestureInfo(GESTURE_DRAG_VERTICAL, info);
-
-		float pos = scrollStart_ - info[0];
-		ClampScrollPos(pos);
-		scrollPos_ = pos;
-		scrollTarget_ = pos;
-		scrollToTarget_ = false;
+			float pos = scrollStart_ - info[0];
+			ClampScrollPos(pos);
+			scrollPos_ = pos;
+			scrollTarget_ = pos;
+			scrollToTarget_ = false;
+		}
+	} else {
+		input2 = input;
 	}
-	
-	if (!(input.flags & TOUCH_DOWN) || bounds_.Contains(input.x, input.y))
+
+	if (!(input.flags & TOUCH_DOWN) || bounds_.Contains(input.x, input.y)) {
 		ViewGroup::Touch(input2);
+	}
 }
 
 void ScrollView::Draw(UIContext &dc) {
@@ -515,11 +555,13 @@ void ScrollView::Draw(UIContext &dc) {
 	float scrollMax = std::max(0.0f, childHeight - bounds_.h);
 
 	float ratio = bounds_.h / views_[0]->GetBounds().h;
+
+	float bobWidth = 5;
 	if (ratio < 1.0f && scrollMax > 0.0f) {
 		float bobHeight = ratio * bounds_.h;
 		float bobOffset = (scrollPos_ / scrollMax) * (bounds_.h - bobHeight);
 
-		Bounds bob(bounds_.x2() - 10, bounds_.y + bobOffset, 5, bobHeight);
+		Bounds bob(bounds_.x2() - bobWidth, bounds_.y + bobOffset, bobWidth, bobHeight);
 		dc.FillRect(Drawable(0x80FFFFFF), bob);
 	}
 }
@@ -578,6 +620,9 @@ void ScrollView::ClampScrollPos(float &pos) {
 	}
 }
 
+bool ScrollView::CanScroll() const {
+	return views_[0]->GetBounds().h > bounds_.h;
+}
 
 void ScrollView::Update(const InputState &input_state) {
 	ViewGroup::Update(input_state);
@@ -632,6 +677,10 @@ void AnchorLayout::Layout() {
 		Bounds vBounds;
 		vBounds.w = views_[i]->GetMeasuredWidth();
 		vBounds.h = views_[i]->GetMeasuredHeight();
+
+		// Clamp width/height to our own
+		if (vBounds.w > bounds_.w) vBounds.w = bounds_.w;
+		if (vBounds.h > bounds_.h) vBounds.h = bounds_.h;
 
 		float left = 0, top = 0, right = 0, bottom = 0, center = false;
 		if (params) {
@@ -757,6 +806,17 @@ void ChoiceStrip::SetSelection(int sel) {
 		static_cast<StickyChoice *>(views_[selected_])->Press();
 }
 
+void ChoiceStrip::Key(const KeyInput &input) {
+	if (input.flags & KEY_DOWN) {
+		if (input.keyCode == NKCODE_BUTTON_L1 && selected_ > 0) {
+			SetSelection(selected_ - 1);
+		} else if (input.keyCode == NKCODE_BUTTON_R1 && selected_ < views_.size() - 1) {
+			SetSelection(selected_ + 1);
+		}
+	}
+	ViewGroup::Key(input);
+}
+
 ListView::ListView(ListAdaptor *a, LayoutParams *layoutParams)
 	: ScrollView(ORIENT_VERTICAL, layoutParams), adaptor_(a) {
 	linLayout_ = new LinearLayout(ORIENT_VERTICAL);
@@ -829,31 +889,57 @@ void LayoutViewHierarchy(const UIContext &dc, ViewGroup *root) {
 	root->Layout();
 }
 
+static recursive_mutex focusLock;
+static std::vector<int> focusMoves;
+
+void KeyEvent(const KeyInput &key, ViewGroup *root) {
+	if (key.flags & KEY_DOWN) {
+		// We ignore the device ID here. Anything with a DPAD is OK.
+		if (key.keyCode >= NKCODE_DPAD_UP && key.keyCode <= NKCODE_DPAD_RIGHT) {
+			lock_guard lock(focusLock);
+			focusMoves.push_back(key.keyCode);
+		}
+	}
+	root->Key(key);
+}
+
+void TouchEvent(const TouchInput &touch, ViewGroup *root) {
+	EnableFocusMovement(false);
+
+	root->Touch(touch);
+}
+
+void AxisEvent(const AxisInput &axis, ViewGroup *root) {
+	root->Axis(axis);
+}
+
 void UpdateViewHierarchy(const InputState &input_state, ViewGroup *root) {
 	if (!root) {
 		ELOG("Tried to update a view hierarchy from a zero pointer root");
 		return;
 	}
-	if (input_state.pad_buttons_down & (PAD_BUTTON_LEFT | PAD_BUTTON_RIGHT | PAD_BUTTON_UP | PAD_BUTTON_DOWN)) {
+
+	if (focusMoves.size()) {
+		lock_guard lock(focusLock);
 		EnableFocusMovement(true);
 		if (!GetFocusedView()) {
 			root->SetFocus();
 			root->SubviewFocused(GetFocusedView());
 		} else {
-			if (input_state.pad_buttons_down & PAD_BUTTON_RIGHT)
-				MoveFocus(root, FOCUS_RIGHT);
-			if (input_state.pad_buttons_down & PAD_BUTTON_UP)
-				MoveFocus(root, FOCUS_UP);
-			if (input_state.pad_buttons_down & PAD_BUTTON_LEFT)
-				MoveFocus(root, FOCUS_LEFT);
-			if (input_state.pad_buttons_down & PAD_BUTTON_DOWN)
-				MoveFocus(root, FOCUS_DOWN);
+			for (size_t i = 0; i < focusMoves.size(); i++) {
+				switch (focusMoves[i]) {
+					case NKCODE_DPAD_LEFT: MoveFocus(root, FOCUS_LEFT); break;
+					case NKCODE_DPAD_RIGHT: MoveFocus(root, FOCUS_RIGHT); break;
+					case NKCODE_DPAD_UP: MoveFocus(root, FOCUS_UP); break;
+					case NKCODE_DPAD_DOWN: MoveFocus(root, FOCUS_DOWN); break;
+				}
+			}
 		}
+		focusMoves.clear();
 	}
-	if (input_state.pointer_down[0])
-		EnableFocusMovement(false);
 
 	root->Update(input_state);
 	DispatchEvents();
 }
+
 }  // namespace UI

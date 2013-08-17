@@ -4,11 +4,12 @@
 #include "GL/wglew.h"
 #endif
 
-#if defined(USING_GLES2) 
+#if defined(USING_GLES2)
 #if defined(ANDROID)
 PFNGLALPHAFUNCQCOMPROC glAlphaFuncQCOM;
 PFNEGLGETSYSTEMTIMEFREQUENCYNVPROC eglGetSystemTimeFrequencyNV;
 PFNEGLGETSYSTEMTIMENVPROC eglGetSystemTimeNV;
+PFNGLMAPBUFFERPROC glMapBuffer;
 #endif
 #if !defined(IOS) && !defined(__SYMBIAN32__) && !defined(MEEGO_EDITION_HARMATTAN)
 PFNGLDISCARDFRAMEBUFFEREXTPROC glDiscardFramebufferEXT;
@@ -39,6 +40,11 @@ void OpenGLState::Restore() {
 	blendFunc.restore(); count++;
 	blendColor.restore(); count++;
 
+#if !defined(USING_GLES2)
+	colorLogicOp.restore(); count++;
+	logicOp.restore(); count++;
+#endif
+
 	scissorTest.restore(); count++;
 	scissorRect.restore(); count++;
 
@@ -59,7 +65,7 @@ void OpenGLState::Restore() {
 	stencilFunc.restore(); count++;
 
 	dither.restore(); count++;
-	
+
 	if (count != state_count) {
 		FLOG("OpenGLState::Restore is missing some states");
 	}
@@ -90,8 +96,7 @@ void CheckGLExtensions() {
 	gl_extensions.OES_depth24 = strstr(extString, "GL_OES_depth24") != 0;
 	gl_extensions.OES_depth_texture = strstr(extString, "GL_OES_depth_texture") != 0;
 	gl_extensions.OES_mapbuffer = strstr(extString, "GL_OES_mapbuffer") != 0;
-
-#if defined(__SYMBIAN32__) || defined(MEEGO_EDITION_HARMATTAN)
+#if defined(IOS) || defined(__SYMBIAN32__) || defined(MEEGO_EDITION_HARMATTAN)
 	gl_extensions.OES_vertex_array_object = false;
 	gl_extensions.EXT_discard_framebuffer = false;
 #else
@@ -108,10 +113,15 @@ void CheckGLExtensions() {
 	if (gl_extensions.EXT_discard_framebuffer) {
 		glDiscardFramebufferEXT = (PFNGLDISCARDFRAMEBUFFEREXTPROC)eglGetProcAddress("glDiscardFramebufferEXT");
 	}
+
 #endif
 #endif
 
 #ifdef ANDROID
+	if (gl_extensions.OES_mapbuffer) {
+		glMapBuffer = (PFNGLMAPBUFFERPROC)eglGetProcAddress( "glMapBufferOES" );
+	}
+
 	gl_extensions.QCOM_alpha_test = strstr(extString, "GL_QCOM_alpha_test") != 0;
 	// Load extensions that are not auto-loaded by Android.
 	if (gl_extensions.QCOM_alpha_test) {
@@ -120,7 +130,7 @@ void CheckGLExtensions() {
 
 	// Look for EGL extensions
 	EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-	
+
 	const char *eglString = eglQueryString(display, EGL_EXTENSIONS);
 
 	gl_extensions.EGL_NV_system_time = strstr(eglString, "EGL_NV_system_time") != 0;
