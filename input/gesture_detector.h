@@ -18,8 +18,9 @@ class GestureDetector {
 public:
 	GestureDetector();
 	TouchInput Update(const TouchInput &touch, const Bounds &bounds);
+	void UpdateFrame();
 	bool IsGestureActive(Gesture gesture) const;
-	void GetGestureInfo(Gesture gesture, float info[4]);
+	bool GetGestureInfo(Gesture gesture, float info[4]) const;
 
 private:
 	Bounds bounds_;
@@ -45,4 +46,8 @@ private:
 	Pointer pointers[MAX_PTRS];
 
 	uint32_t active_;
+
+	// For inertia estimation
+	float estimatedInertiaX_;
+	float estimatedInertiaY_;
 };

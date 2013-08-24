@@ -1,4 +1,5 @@
 ﻿#include <queue>
+#include <algorithm>
 #include "base/display.h"
 #include "base/mutex.h"
 #include "input/input_state.h"
@@ -184,12 +185,14 @@ void Clickable::Touch(const TouchInput &input) {
 	}
 }
 
+// TODO: O/X confirm preference for xperia play?
+
 bool IsAcceptKeyCode(int keyCode) {
-	return keyCode == NKCODE_SPACE || keyCode == NKCODE_ENTER || keyCode == NKCODE_X || keyCode == NKCODE_BUTTON_A;
+	return std::find(confirmKeys.begin(), confirmKeys.end(), (keycode_t)keyCode) != confirmKeys.end();
 }
 
 bool IsEscapeKeyCode(int keyCode) {
-	return keyCode == NKCODE_ESCAPE || keyCode == NKCODE_BACK;
+	return std::find(cancelKeys.begin(), cancelKeys.end(), (keycode_t)keyCode) != cancelKeys.end();
 }
 
 void Clickable::Key(const KeyInput &key) {
@@ -272,40 +275,70 @@ ClickableItem::ClickableItem(LayoutParams *layoutParams) : Clickable(layoutParam
 }
 
 void ClickableItem::Draw(UIContext &dc) {
-	Style style = dc.theme->itemStyle;
+	Style style =	dc.theme->itemStyle;
 	if (HasFocus()) {
 		style = dc.theme->itemFocusedStyle;
 	}
 	if (down_) {
 		style = dc.theme->itemDownStyle;
-	} 
+	}
 	dc.FillRect(style.background, bounds_);
 }
 
 void Choice::GetContentDimensions(const UIContext &dc, float &w, float &h) const {
-	dc.Draw()->MeasureText(dc.theme->uiFont, text_.c_str(), &w, &h);
+	if (atlasImage_ != -1) {
+		const AtlasImage &img = dc.Draw()->GetAtlas()->images[atlasImage_];
+		w = img.w;
+		h = img.h;
+	} else {
+		dc.Draw()->MeasureText(dc.theme->uiFont, text_.c_str(), &w, &h);
+	}
 	w += 24;
 	h += 16;
 }
 
 void Choice::Draw(UIContext &dc) {
-	ClickableItem::Draw(dc);
+	if (!IsSticky()) {
+		ClickableItem::Draw(dc);
+	} else {
+		Style style =	dc.theme->itemStyle;
+		if (down_) {
+			style = dc.theme->itemDownStyle;
+		}
+		if (HasFocus()) {
+			style = dc.theme->itemFocusedStyle;
+		}
+		dc.FillRect(style.background, bounds_);
+	}
 
-	int paddingX = 12;
-	dc.Draw()->DrawText(dc.theme->uiFont, text_.c_str(), bounds_.x + paddingX, bounds_.centerY(), 0xFFFFFFFF, ALIGN_VCENTER);
+	Style style = dc.theme->itemStyle;
+	if (!IsEnabled())
+		style = dc.theme->itemDisabledStyle;
+
+	if (atlasImage_ != -1) {
+		dc.Draw()->DrawImage(atlasImage_, bounds_.centerX(), bounds_.centerY(), 1.0f, style.fgColor, ALIGN_CENTER);
+	} else {
+		int paddingX = 12;
+		dc.Draw()->DrawText(dc.theme->uiFont, text_.c_str(), bounds_.x + paddingX, bounds_.centerY(), style.fgColor, ALIGN_VCENTER);
+	}
 
 	if (selected_) {
-		dc.Draw()->DrawImage(dc.theme->checkOn, bounds_.x2() - 40, bounds_.centerY(), 1.0f, 0xFFFFFFFF, ALIGN_CENTER);
+		dc.Draw()->DrawImage(dc.theme->checkOn, bounds_.x2() - 40, bounds_.centerY(), 1.0f, style.fgColor, ALIGN_CENTER);
 	}
-	// dc.draw->DrawText(dc.theme->uiFontSmaller, text_.c_str(), paddingX, paddingY, 0xFFFFFFFF, ALIGN_TOPLEFT);
 }
 
 void InfoItem::Draw(UIContext &dc) {
 	Item::Draw(dc);
 	int paddingX = 12;
 	dc.Draw()->DrawText(dc.theme->uiFont, text_.c_str(), bounds_.x + paddingX, bounds_.centerY(), 0xFFFFFFFF, ALIGN_VCENTER);
-	dc.Draw()->DrawText(dc.theme->uiFont, text_.c_str(), bounds_.x2() - paddingX, bounds_.centerY(), 0xFFFFFFFF, ALIGN_VCENTER | ALIGN_RIGHT);
+	dc.Draw()->DrawText(dc.theme->uiFont, rightText_.c_str(), bounds_.x2() - paddingX, bounds_.centerY(), 0xFFFFFFFF, ALIGN_VCENTER | ALIGN_RIGHT);
 // 	dc.Draw()->DrawImageStretch(dc.theme->whiteImage, bounds_.x, bounds_.y, bounds_.x2(), bounds_.y + 2, dc.theme->itemDownStyle.bgColor);
+}
+
+ItemHeader::ItemHeader(const std::string &text, LayoutParams *layoutParams)
+	: Item(layoutParams), text_(text) {
+		layoutParams_->width = FILL_PARENT;
+		layoutParams_->height = 40;
 }
 
 void ItemHeader::Draw(UIContext &dc) {
@@ -314,7 +347,7 @@ void ItemHeader::Draw(UIContext &dc) {
 		scale = 0.7f;
 	}
 	dc.Draw()->SetFontScale(scale, scale);
-	dc.Draw()->DrawText(dc.theme->uiFontSmaller, text_.c_str(), bounds_.x + 4, bounds_.y, 0xFFFFFFFF, ALIGN_LEFT);
+	dc.Draw()->DrawText(dc.theme->uiFontSmaller, text_.c_str(), bounds_.x + 4, bounds_.centerY(), 0xFFFFFFFF, ALIGN_LEFT | ALIGN_VCENTER);
 	dc.Draw()->SetFontScale(1.0f, 1.0f);
 	dc.Draw()->DrawImageStretch(dc.theme->whiteImage, bounds_.x, bounds_.y2()-2, bounds_.x2(), bounds_.y2(), 0xFFFFFFFF);
 }
@@ -331,8 +364,12 @@ void CheckBox::Draw(UIContext &dc) {
 
 	int image = *toggle_ ? dc.theme->checkOn : dc.theme->checkOff;
 
-	dc.Draw()->DrawText(dc.theme->uiFont, text_.c_str(), bounds_.x + paddingX, bounds_.centerY(), 0xFFFFFFFF, ALIGN_VCENTER);
-	dc.Draw()->DrawImage(image, bounds_.x2() - paddingX, bounds_.centerY(), 1.0f, 0xFFFFFFFF, ALIGN_RIGHT | ALIGN_VCENTER);
+	Style style = dc.theme->itemStyle;
+	if (!IsEnabled())
+		style = dc.theme->itemDisabledStyle;
+
+	dc.Draw()->DrawText(dc.theme->uiFont, text_.c_str(), bounds_.x + paddingX, bounds_.centerY(), style.fgColor, ALIGN_VCENTER);
+	dc.Draw()->DrawImage(image, bounds_.x2() - paddingX, bounds_.centerY(), 1.0f, style.fgColor, ALIGN_RIGHT | ALIGN_VCENTER);
 }
 
 void Button::GetContentDimensions(const UIContext &dc, float &w, float &h) const {
@@ -347,7 +384,15 @@ void Button::Draw(UIContext &dc) {
 
 	// dc.Draw()->DrawImage4Grid(style.image, bounds_.x, bounds_.y, bounds_.x2(), bounds_.y2(), style.bgColor);
 	dc.FillRect(style.background, bounds_);
+	float tw, th;
+	dc.Draw()->MeasureText(dc.theme->uiFont, text_.c_str(), &tw, &th);
+	if (tw > bounds_.w) {
+		dc.PushScissor(bounds_);
+	}
 	dc.Draw()->DrawText(dc.theme->uiFont, text_.c_str(), bounds_.centerX(), bounds_.centerY(), style.fgColor, ALIGN_CENTER);
+	if (tw > bounds_.w) {
+		dc.PopScissor();
+	}
 }
 
 void ImageView::GetContentDimensions(const UIContext &dc, float &w, float &h) const {
@@ -358,8 +403,10 @@ void ImageView::GetContentDimensions(const UIContext &dc, float &w, float &h) co
 }
 
 void ImageView::Draw(UIContext &dc) {
+	const AtlasImage &img = dc.Draw()->GetAtlas()->images[atlasImage_];
 	// TODO: involve sizemode
-	dc.Draw()->DrawImage(atlasImage_, bounds_.x, bounds_.y, bounds_.w, bounds_.h, 0xFFFFFFFF);
+	float scale = bounds_.w / img.w;
+	dc.Draw()->DrawImage(atlasImage_, bounds_.x, bounds_.y, scale, 0xFFFFFFFF, ALIGN_TOPLEFT);
 }
 
 void TextureView::GetContentDimensions(const UIContext &dc, float &w, float &h) const {
@@ -453,7 +500,7 @@ void Slider::Key(const KeyInput &input) {
 		case NKCODE_DPAD_RIGHT:
 		case NKCODE_PLUS:
 		case NKCODE_NUMPAD_ADD:
-			*value_ -= 1;
+			*value_ += 1;
 			break;
 		}
 		Clamp();
@@ -462,7 +509,7 @@ void Slider::Key(const KeyInput &input) {
 
 void Slider::Touch(const TouchInput &input) {
 	if (dragging_ || bounds_.Contains(input.x, input.y)) {
-		float relativeX = (input.x - bounds_.x) / bounds_.w;
+		float relativeX = (input.x - (bounds_.x + paddingLeft_)) / (bounds_.w - paddingLeft_ - paddingRight_);
 		*value_ = floorf(relativeX * (maxValue_ - minValue_) + minValue_ + 0.5f);
 		Clamp();
 	}
@@ -474,10 +521,17 @@ void Slider::Clamp() {
 }
 
 void Slider::Draw(UIContext &dc) {
-	float knobX = ((float)(*value_) - minValue_) / (maxValue_ - minValue_) * bounds_.w + bounds_.x;
-	dc.FillRect(Drawable(0xFFFFFFFF), Bounds(bounds_.x, bounds_.centerY() - 2, knobX - bounds_.x, 4));
-	dc.FillRect(Drawable(0xFF808080), Bounds(knobX, bounds_.centerY() - 2, bounds_.x + bounds_.w - knobX, 4));
+	bool focus = HasFocus();
+	float knobX = ((float)(*value_) - minValue_) / (maxValue_ - minValue_) * (bounds_.w - paddingLeft_ - paddingRight_) + (bounds_.x + paddingLeft_);
+	dc.FillRect(Drawable(focus ? dc.theme->popupTitle.fgColor : 0xFFFFFFFF), Bounds(bounds_.x + paddingLeft_, bounds_.centerY() - 2, knobX - (bounds_.x + paddingLeft_), 4));
+	dc.FillRect(Drawable(0xFF808080), Bounds(knobX, bounds_.centerY() - 2, (bounds_.x + bounds_.w - paddingRight_ - knobX), 4));
 	dc.Draw()->DrawImage(dc.theme->sliderKnob, knobX, bounds_.centerY(), 1.0f, 0xFFFFFFFF, ALIGN_CENTER);
+	char temp[64];
+	if (showPercent_)
+		sprintf(temp, "%i%%", *value_);
+	else
+		sprintf(temp, "%i", *value_);
+	dc.Draw()->DrawText(dc.theme->uiFont, temp, bounds_.x2() - 22, bounds_.centerY(), 0xFFFFFFFF, ALIGN_CENTER);
 }
 
 void Slider::GetContentDimensions(const UIContext &dc, float &w, float &h) const {
@@ -492,12 +546,12 @@ void SliderFloat::Key(const KeyInput &input) {
 		case NKCODE_DPAD_LEFT:
 		case NKCODE_MINUS:
 		case NKCODE_NUMPAD_SUBTRACT:
-			*value_ -= 1;
+			*value_ -= (maxValue_ - minValue_) / 20.0f;
 			break;
 		case NKCODE_DPAD_RIGHT:
 		case NKCODE_PLUS:
 		case NKCODE_NUMPAD_ADD:
-			*value_ -= 1;
+			*value_ += (maxValue_ - minValue_) / 20.0f;
 			break;
 		}
 		Clamp();
@@ -506,8 +560,8 @@ void SliderFloat::Key(const KeyInput &input) {
 
 void SliderFloat::Touch(const TouchInput &input) {
 	if (dragging_ || bounds_.Contains(input.x, input.y)) {
-		float relativeX = (input.x - bounds_.x) / bounds_.w;
-		*value_ = floorf(relativeX * (maxValue_ - minValue_) + minValue_ + 0.5f);
+		float relativeX = (input.x - (bounds_.x + paddingLeft_)) / (bounds_.w - paddingLeft_ - paddingRight_);
+		*value_ = (relativeX * (maxValue_ - minValue_) + minValue_);
 		Clamp();
 	}
 }
@@ -518,10 +572,14 @@ void SliderFloat::Clamp() {
 }
 
 void SliderFloat::Draw(UIContext &dc) {
-	float knobX = ((float)(*value_) - minValue_) / (maxValue_ - minValue_) * bounds_.w + bounds_.x;
-	dc.FillRect(Drawable(0xFFFFFFFF), Bounds(bounds_.x, bounds_.centerY() - 2, knobX - bounds_.x, 4));
-	dc.FillRect(Drawable(0xFF808080), Bounds(knobX, bounds_.centerY() - 2, bounds_.x + bounds_.w - knobX, 4));
+	bool focus = HasFocus();
+	float knobX = (*value_ - minValue_) / (maxValue_ - minValue_) * (bounds_.w - paddingLeft_ - paddingRight_) + (bounds_.x + paddingLeft_);
+	dc.FillRect(Drawable(focus ? dc.theme->popupTitle.fgColor : 0xFFFFFFFF), Bounds(bounds_.x + paddingLeft_, bounds_.centerY() - 2, knobX - (bounds_.x + paddingLeft_), 4));
+	dc.FillRect(Drawable(0xFF808080), Bounds(knobX, bounds_.centerY() - 2, (bounds_.x + bounds_.w - paddingRight_ - knobX), 4));
 	dc.Draw()->DrawImage(dc.theme->sliderKnob, knobX, bounds_.centerY(), 1.0f, 0xFFFFFFFF, ALIGN_CENTER);
+	char temp[64];
+	sprintf(temp, "%0.2f", *value_);
+	dc.Draw()->DrawText(dc.theme->uiFont, temp, bounds_.x2() - 22, bounds_.centerY(), 0xFFFFFFFF, ALIGN_CENTER);
 }
 
 void SliderFloat::GetContentDimensions(const UIContext &dc, float &w, float &h) const {

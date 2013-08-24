@@ -31,7 +31,7 @@
 #include "base/NativeApp.h"
 #include "input/input_state.h"
 #include "net/resolve.h"
-#include "display.h"
+#include "base/display.h"
 
 #include "BlackberryAudio.h"
 
@@ -48,7 +48,7 @@ public:
 	BlackberryMain(int argc, char *argv[]) :
 		emulating(false),
 		screen_ui(0), screen_emu(0),
-		controller_buttons(0),
+		old_buttons(0),
 		egl_cont(EGL_NO_CONTEXT)
 	{
 		startMain(argc, argv);
@@ -76,11 +76,10 @@ private:
 	BlackberryAudio* audio;
 	dispdata_t *displays;
 	int dpi;
-	float dpi_scale;
 	int ndisplays;
 	int screen_ui, screen_emu;
 	bool emulating;
-	int controller_buttons;
+	int old_buttons;
 	EGLDisplay* egl_disp;
 	EGLSurface* egl_surf;
 	EGLContext  egl_cont;

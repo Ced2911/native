@@ -735,6 +735,7 @@ void GetLocales(const char *locales, std::vector<CharRange> &ranges)
 			ranges.push_back(range(0x3231, 0x3231)); // Co,.Ltd. symbol
 			ranges.push_back(range(0x2116, 0x2116)); // "No." symbol
 			ranges.push_back(range(0x33CD, 0x33CD)); // "K.K." symbol
+			break;
 		case 'H':  // Hebrew
 			ranges.push_back(range(0x0590, 0x05FF));
 			break;

@@ -17,7 +17,7 @@ struct NeighborResult {
 
 class ViewGroup : public View {
 public:
-	ViewGroup(LayoutParams *layoutParams = 0) : View(layoutParams), hasDropShadow_(false) {}
+	ViewGroup(LayoutParams *layoutParams = 0) : View(layoutParams), hasDropShadow_(false), clip_(false) {}
 	virtual ~ViewGroup();
 
 	// Pass through external events to children.
@@ -57,11 +57,17 @@ public:
 
 	void SetHasDropShadow(bool has) { hasDropShadow_ = has; }
 
+	void Lock() { modifyLock_.lock(); }
+	void Unlock() { modifyLock_.unlock(); }
+
+	void SetClip(bool clip) { clip_ = clip; }
+
 protected:
 	recursive_mutex modifyLock_;  // Hold this when changing the subviews.
 	std::vector<View *> views_;
 	Drawable bg_;
 	bool hasDropShadow_;
+	bool clip_;
 };
 
 // A frame layout contains a single child view (normally).
@@ -139,8 +145,9 @@ public:
 	void SetSpacing(float spacing) {
 		spacing_ = spacing;
 	}
-private:
+protected:
 	Orientation orientation_;
+private:
 	Margins defaultMargins_;
 	float spacing_;
 };
@@ -183,9 +190,11 @@ public:
 		orientation_(orientation),
 		scrollPos_(0),
 		scrollStart_(0),
-		scrollMax_(0),
 		scrollTarget_(0),
-		scrollToTarget_(false) {}
+		scrollToTarget_(false),
+		inertia_(0),
+		lastViewSize_(0.0f),
+		scrollToTopOnSizeChange_(true) {}
 
 	void Measure(const UIContext &dc, MeasureSpec horiz, MeasureSpec vert);
 	void Layout();
@@ -202,6 +211,9 @@ public:
 	// Override so that we can scroll to the active one after moving the focus.
 	virtual bool SubviewFocused(View *view);
 
+	// Quick hack to prevent scrolling to top in some lists
+	void SetScrollToTop(bool t) { scrollToTopOnSizeChange_ = t; }
+
 private:
 	void ClampScrollPos(float &pos);
 
@@ -209,9 +221,11 @@ private:
 	Orientation orientation_;
 	float scrollPos_;
 	float scrollStart_;
-	float scrollMax_;
 	float scrollTarget_;
 	bool scrollToTarget_;
+	float inertia_;
+	float lastViewSize_;
+	bool scrollToTopOnSizeChange_;
 };
 
 class ViewPager : public ScrollView {
@@ -222,19 +236,22 @@ public:
 class ChoiceStrip : public LinearLayout {
 public:
 	ChoiceStrip(Orientation orientation, LayoutParams *layoutParams = 0)
-		: LinearLayout(orientation, layoutParams), selected_(0) { SetSpacing(0.0f); }
+		: LinearLayout(orientation, layoutParams), selected_(0), topTabs_(false) { SetSpacing(0.0f); }
 
 	void AddChoice(const std::string &title);
+	void AddChoice(ImageID buttonImage);
 	int GetSelection() const { return selected_; }
 	void SetSelection(int sel);
 	virtual void Key(const KeyInput &input);
-
+	void SetTopTabs(bool tabs) { topTabs_ = tabs; }
+	void Draw(UIContext &dc);
 	Event OnChoice;
 
 private:
 	EventReturn OnChoiceClick(EventParams &e);
 
 	int selected_;
+	bool topTabs_;  // Can be controlled with L/R.
 };
 
 
@@ -243,7 +260,9 @@ public:
 	TabHolder(Orientation orientation, float stripSize, LayoutParams *layoutParams = 0)
 		: LinearLayout(Opposite(orientation), layoutParams),
 			orientation_(orientation), stripSize_(stripSize), currentTab_(0) {
+		SetSpacing(0.0f);
 		tabStrip_ = new ChoiceStrip(orientation, new LinearLayoutParams(stripSize, WRAP_CONTENT));
+		tabStrip_->SetTopTabs(true);
 		Add(tabStrip_);
 		tabStrip_->OnChoice.Handle(this, &TabHolder::OnTabClick);
 	}

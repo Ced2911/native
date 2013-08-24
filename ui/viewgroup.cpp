@@ -91,6 +91,10 @@ void ViewGroup::Draw(UIContext &dc) {
 		// dc.Draw()->DrawImage4Grid(dc.theme->dropShadow, )
 	}
 
+	if (clip_) {
+		dc.PushScissor(bounds_);
+	}
+
 	dc.FillRect(bg_, bounds_);
 	for (auto iter = views_.begin(); iter != views_.end(); ++iter) {
 		// TODO: If there is a transformation active, transform input coordinates accordingly.
@@ -99,6 +103,9 @@ void ViewGroup::Draw(UIContext &dc) {
 			if (dc.GetScissorBounds().Intersects((*iter)->GetBounds()))
 				(*iter)->Draw(dc);
 		}
+	}
+	if (clip_) {
+		dc.PopScissor();
 	}
 }
 
@@ -135,7 +142,7 @@ float GetDirectionScore(View *origin, View *destination, FocusDirection directio
 	// Skip labels and things like that.
 	if (!destination->CanBeFocused())
 		return 0.0f;
-	if (destination->GetEnabled() == false)
+	if (destination->IsEnabled() == false)
 		return 0.0f;
 	if (destination->GetVisibility() != V_VISIBLE)
 		return 0.0f;
@@ -178,7 +185,7 @@ float GetDirectionScore(View *origin, View *destination, FocusDirection directio
 
 
 NeighborResult ViewGroup::FindNeighbor(View *view, FocusDirection direction, NeighborResult result) {
-	if (!GetEnabled())
+	if (!IsEnabled())
 		return result;
 	if (GetVisibility() != V_VISIBLE)
 		return result;
@@ -456,27 +463,32 @@ void FrameLayout::Layout() {
 void ScrollView::Measure(const UIContext &dc, MeasureSpec horiz, MeasureSpec vert) {
 	// Respect margins
 	Margins margins;
-	const LinearLayoutParams *linLayoutParams = static_cast<const LinearLayoutParams*>(views_[0]->GetLayoutParams());
-	if (!linLayoutParams->Is(LP_LINEAR)) linLayoutParams = 0;
-
-	if (linLayoutParams) {
-		margins = linLayoutParams->margins;
+	if (views_.size()) {
+		const LinearLayoutParams *linLayoutParams = static_cast<const LinearLayoutParams*>(views_[0]->GetLayoutParams());
+		if (!linLayoutParams->Is(LP_LINEAR)) linLayoutParams = 0;
+		if (linLayoutParams) {
+			margins = linLayoutParams->margins;
+		}
 	}
 
 	// The scroll view itself simply obeys its parent - but also tries to fit the child if possible.
 	MeasureBySpec(layoutParams_->width, 0.0f, horiz, &measuredWidth_);
 	MeasureBySpec(layoutParams_->height, 0.0f, vert, &measuredHeight_);
 
-	if (orientation_ == ORIENT_HORIZONTAL) {
-		views_[0]->Measure(dc, MeasureSpec(UNSPECIFIED), MeasureSpec(AT_MOST, measuredHeight_ - (margins.top + margins.bottom)));
-	} else {
-		views_[0]->Measure(dc, MeasureSpec(AT_MOST, measuredWidth_ - (margins.left + margins.right)), MeasureSpec(UNSPECIFIED));
+	if (views_.size()) {
+		if (orientation_ == ORIENT_HORIZONTAL) {
+			views_[0]->Measure(dc, MeasureSpec(UNSPECIFIED), MeasureSpec(AT_MOST, measuredHeight_ - (margins.top + margins.bottom)));
+		} else {
+			views_[0]->Measure(dc, MeasureSpec(AT_MOST, measuredWidth_ - (margins.left + margins.right)), MeasureSpec(UNSPECIFIED));
+		}
+		if (orientation_ == ORIENT_VERTICAL && vert.type != EXACTLY && measuredHeight_ < views_[0]->GetBounds().h)
+			measuredHeight_ = views_[0]->GetBounds().h;
 	}
-	if (orientation_ == ORIENT_VERTICAL && vert.type != EXACTLY && measuredHeight_ < views_[0]->GetBounds().h)
-		measuredHeight_ = views_[0]->GetBounds().h;
 }
 
 void ScrollView::Layout() {
+	if (!views_.size())
+		return;
 	Bounds scrolled;
 
 	// Respect margins
@@ -490,12 +502,21 @@ void ScrollView::Layout() {
 	scrolled.w = views_[0]->GetMeasuredWidth() - (margins.left + margins.right);
 	scrolled.h = views_[0]->GetMeasuredHeight() - (margins.top + margins.bottom);
 
+
 	switch (orientation_) {
 	case ORIENT_HORIZONTAL:
+		if (scrolled.w != lastViewSize_) {
+			ScrollTo(0.0f);
+			lastViewSize_ = scrolled.w;
+		}
 		scrolled.x = bounds_.x - scrollPos_;
 		scrolled.y = bounds_.y + margins.top;
 		break;
 	case ORIENT_VERTICAL:
+		if (scrolled.h != lastViewSize_ && scrollToTopOnSizeChange_) {
+			ScrollTo(0.0f);
+			lastViewSize_ = scrolled.h;
+		}
 		scrolled.x = bounds_.x + margins.left;
 		scrolled.y = bounds_.y - scrollPos_;
 		break;
@@ -506,6 +527,9 @@ void ScrollView::Layout() {
 }
 
 void ScrollView::Key(const KeyInput &input) {
+	if (visibility_ != V_VISIBLE)
+		return ViewGroup::Key(input);
+
 	if (input.flags & KEY_DOWN) {
 		switch (input.keyCode) {
 		case NKCODE_EXT_MOUSEWHEEL_UP:
@@ -514,23 +538,43 @@ void ScrollView::Key(const KeyInput &input) {
 		case NKCODE_EXT_MOUSEWHEEL_DOWN:
 			ScrollRelative(250);
 			break;
+		case NKCODE_PAGE_DOWN:
+			ScrollRelative(bounds_.h - 50);
+			break;
+		case NKCODE_PAGE_UP:
+			ScrollRelative(-bounds_.h + 50);
+			break;
+		case NKCODE_MOVE_HOME:
+			ScrollTo(0);
+			break;
+		case NKCODE_MOVE_END:
+			if (views_.size())
+				ScrollTo(views_[0]->GetBounds().h);
+			break;
 		}
 	}
 	ViewGroup::Key(input);
 }
 
+const float friction = 0.92f;
+const float stop_threshold = 0.1f;
+
 void ScrollView::Touch(const TouchInput &input) {
 	if ((input.flags & TOUCH_DOWN) && input.id == 0) {
 		scrollStart_ = scrollPos_;
+		inertia_ = 0.0f;
 	}
-	
+	if (input.flags & TOUCH_UP) {
+		float info[4];
+		if (gesture_.GetGestureInfo(GESTURE_DRAG_VERTICAL, info))
+			inertia_ = info[1];
+	}
+
 	TouchInput input2;
 	if (CanScroll()) {
 		input2 = gesture_.Update(input, bounds_);
-		if (gesture_.IsGestureActive(GESTURE_DRAG_VERTICAL)) {
-			float info[4];
-			gesture_.GetGestureInfo(GESTURE_DRAG_VERTICAL, info);
-
+		float info[4];
+		if (gesture_.GetGestureInfo(GESTURE_DRAG_VERTICAL, info)) {
 			float pos = scrollStart_ - info[0];
 			ClampScrollPos(pos);
 			scrollPos_ = pos;
@@ -547,6 +591,10 @@ void ScrollView::Touch(const TouchInput &input) {
 }
 
 void ScrollView::Draw(UIContext &dc) {
+	if (!views_.size()) {
+		ViewGroup::Draw(dc);
+		return;
+	}
 	dc.PushScissor(bounds_);
 	views_[0]->Draw(dc);
 	dc.PopScissor();
@@ -608,6 +656,8 @@ void ScrollView::ScrollRelative(float distance) {
 }
 
 void ScrollView::ClampScrollPos(float &pos) {
+	if (!views_.size())
+		pos = 0.0f;
 	// Clamp scrollTarget.
 	float childHeight = views_[0]->GetBounds().h;
 	float scrollMax = std::max(0.0f, childHeight - bounds_.h);
@@ -621,18 +671,31 @@ void ScrollView::ClampScrollPos(float &pos) {
 }
 
 bool ScrollView::CanScroll() const {
+	if (!views_.size())
+		return false;
 	return views_[0]->GetBounds().h > bounds_.h;
 }
 
 void ScrollView::Update(const InputState &input_state) {
+	if (visibility_ != V_VISIBLE) {
+		inertia_ = 0.0f;
+	}
 	ViewGroup::Update(input_state);
+	gesture_.UpdateFrame();
 	if (scrollToTarget_) {
+		inertia_ = 0.0f;
 		if (fabsf(scrollTarget_ - scrollPos_) < 0.5f) {
 			scrollPos_ = scrollTarget_;
 			scrollToTarget_ = false;
 		} else {
 			scrollPos_ += (scrollTarget_ - scrollPos_) * 0.3f;
 		}
+	} else if (inertia_ != 0.0f && !gesture_.IsGestureActive(GESTURE_DRAG_VERTICAL)) {
+		scrollPos_ -= inertia_;
+		inertia_ *= friction;
+		if (fabsf(inertia_) < stop_threshold)
+			inertia_ = 0.0f;
+		ClampScrollPos(scrollPos_);
 	}
 }
 
@@ -781,6 +844,14 @@ void ChoiceStrip::AddChoice(const std::string &title) {
 		c->Press();
 }
 
+void ChoiceStrip::AddChoice(ImageID buttonImage) {
+	StickyChoice *c = new StickyChoice(buttonImage, new LinearLayoutParams(WRAP_CONTENT, WRAP_CONTENT));
+	c->OnClick.Handle(this, &ChoiceStrip::OnChoiceClick);
+	Add(c);
+	if (selected_ == (int)views_.size() - 1)
+		c->Press();
+}
+
 EventReturn ChoiceStrip::OnChoiceClick(EventParams &e) {
 	// Unstick the other choices that weren't clicked.
 	for (int i = 0; i < (int)views_.size(); i++) {
@@ -799,11 +870,17 @@ EventReturn ChoiceStrip::OnChoiceClick(EventParams &e) {
 }
 
 void ChoiceStrip::SetSelection(int sel) {
+	int prevSelected = selected_;
 	if (selected_ < views_.size())
 		static_cast<StickyChoice *>(views_[selected_])->Release();
 	selected_ = sel;
 	if (selected_ < views_.size())
 		static_cast<StickyChoice *>(views_[selected_])->Press();
+	if (topTabs_ && prevSelected != selected_) {
+		EventParams e; 
+		e.v = views_[selected_];
+		static_cast<StickyChoice *>(views_[selected_])->OnClick.Trigger(e);
+	}
 }
 
 void ChoiceStrip::Key(const KeyInput &input) {
@@ -816,6 +893,17 @@ void ChoiceStrip::Key(const KeyInput &input) {
 	}
 	ViewGroup::Key(input);
 }
+
+void ChoiceStrip::Draw(UIContext &dc) {
+	ViewGroup::Draw(dc);
+	if (topTabs_) {
+		if (orientation_ == ORIENT_HORIZONTAL)
+			dc.Draw()->DrawImageStretch(dc.theme->whiteImage, bounds_.x, bounds_.y2() - 4, bounds_.x2(), bounds_.y2(), dc.theme->itemDownStyle.background.color );
+		else if (orientation_ == ORIENT_VERTICAL)
+			dc.Draw()->DrawImageStretch(dc.theme->whiteImage, bounds_.x2() - 4, bounds_.y, bounds_.x2(), bounds_.y2(), dc.theme->itemDownStyle.background.color );
+	}
+}
+
 
 ListView::ListView(ListAdaptor *a, LayoutParams *layoutParams)
 	: ScrollView(ORIENT_VERTICAL, layoutParams), adaptor_(a) {

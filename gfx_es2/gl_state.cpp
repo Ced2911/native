@@ -11,7 +11,7 @@ PFNEGLGETSYSTEMTIMEFREQUENCYNVPROC eglGetSystemTimeFrequencyNV;
 PFNEGLGETSYSTEMTIMENVPROC eglGetSystemTimeNV;
 PFNGLMAPBUFFERPROC glMapBuffer;
 #endif
-#if !defined(IOS) && !defined(__SYMBIAN32__) && !defined(MEEGO_EDITION_HARMATTAN)
+#if !defined(IOS) && !defined(__SYMBIAN32__) && !defined(MEEGO_EDITION_HARMATTAN) && !defined(MAEMO)
 PFNGLDISCARDFRAMEBUFFEREXTPROC glDiscardFramebufferEXT;
 PFNGLGENVERTEXARRAYSOESPROC glGenVertexArraysOES;
 PFNGLBINDVERTEXARRAYOESPROC glBindVertexArrayOES;
@@ -22,6 +22,8 @@ PFNGLISVERTEXARRAYOESPROC glIsVertexArrayOES;
 
 OpenGLState glstate;
 GLExtensions gl_extensions;
+std::string g_all_gl_extensions;
+std::string g_all_egl_extensions;
 
 int OpenGLState::state_count = 0;
 
@@ -37,7 +39,7 @@ void OpenGLState::Restore() {
 	int count = 0;
 	blend.restore(); count++;
 	blendEquation.restore(); count++;
-	blendFunc.restore(); count++;
+	blendFuncSeparate.restore(); count++;
 	blendColor.restore(); count++;
 
 #if !defined(USING_GLES2)
@@ -82,10 +84,20 @@ void CheckGLExtensions() {
 	memset(&gl_extensions, 0, sizeof(gl_extensions));
 
 	const char *extString = (const char *)glGetString(GL_EXTENSIONS);
+	if (extString) {
+		g_all_gl_extensions = extString;
+	} else {
+		g_all_gl_extensions = "";
+	}
 
 #ifdef WIN32
 	const char *wglString = wglGetExtensionsStringEXT();
-	gl_extensions.EXT_swap_control_tear = strstr(wglString, "WGL_EXT_swap_control_tear") != 0;
+	if (wglString) {
+		gl_extensions.EXT_swap_control_tear = strstr(wglString, "WGL_EXT_swap_control_tear") != 0;
+		g_all_egl_extensions = wglString;
+	} else {
+		g_all_egl_extensions = "";
+	}
 #elif !defined(USING_GLES2)
 	// const char *glXString = glXQueryExtensionString();
 	// gl_extensions.EXT_swap_control_tear = strstr(glXString, "GLX_EXT_swap_control_tear") != 0;
@@ -96,7 +108,7 @@ void CheckGLExtensions() {
 	gl_extensions.OES_depth24 = strstr(extString, "GL_OES_depth24") != 0;
 	gl_extensions.OES_depth_texture = strstr(extString, "GL_OES_depth_texture") != 0;
 	gl_extensions.OES_mapbuffer = strstr(extString, "GL_OES_mapbuffer") != 0;
-#if defined(IOS) || defined(__SYMBIAN32__) || defined(MEEGO_EDITION_HARMATTAN)
+#if defined(IOS) || defined(__SYMBIAN32__) || defined(MEEGO_EDITION_HARMATTAN) || defined(MAEMO)
 	gl_extensions.OES_vertex_array_object = false;
 	gl_extensions.EXT_discard_framebuffer = false;
 #else
@@ -106,7 +118,6 @@ void CheckGLExtensions() {
 		glBindVertexArrayOES = (PFNGLBINDVERTEXARRAYOESPROC)eglGetProcAddress ( "glBindVertexArrayOES" );
 		glDeleteVertexArraysOES = (PFNGLDELETEVERTEXARRAYSOESPROC)eglGetProcAddress ( "glDeleteVertexArraysOES" );
 		glIsVertexArrayOES = (PFNGLISVERTEXARRAYOESPROC)eglGetProcAddress ( "glIsVertexArrayOES" );
-		ILOG("VAO available");
 	}
 
 	gl_extensions.EXT_discard_framebuffer = strstr(extString, "GL_EXT_discard_framebuffer") != 0;
@@ -132,13 +143,18 @@ void CheckGLExtensions() {
 	EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
 
 	const char *eglString = eglQueryString(display, EGL_EXTENSIONS);
+	if (eglString) {
+		g_all_egl_extensions = eglString;
 
-	gl_extensions.EGL_NV_system_time = strstr(eglString, "EGL_NV_system_time") != 0;
-	gl_extensions.EGL_NV_coverage_sample = strstr(eglString, "EGL_NV_coverage_sample") != 0;
+		gl_extensions.EGL_NV_system_time = strstr(eglString, "EGL_NV_system_time") != 0;
+		gl_extensions.EGL_NV_coverage_sample = strstr(eglString, "EGL_NV_coverage_sample") != 0;
 
-	if (gl_extensions.EGL_NV_system_time) {
-		eglGetSystemTimeNV = (PFNEGLGETSYSTEMTIMENVPROC) eglGetProcAddress("eglGetSystemTimeNV");
-		eglGetSystemTimeFrequencyNV = (PFNEGLGETSYSTEMTIMEFREQUENCYNVPROC) eglGetProcAddress("eglGetSystemTimeFrequencyNV");
+		if (gl_extensions.EGL_NV_system_time) {
+			eglGetSystemTimeNV = (PFNEGLGETSYSTEMTIMENVPROC) eglGetProcAddress("eglGetSystemTimeNV");
+			eglGetSystemTimeFrequencyNV = (PFNEGLGETSYSTEMTIMEFREQUENCYNVPROC) eglGetProcAddress("eglGetSystemTimeFrequencyNV");
+		}
+	} else {
+		g_all_egl_extensions = "";
 	}
 
 #endif

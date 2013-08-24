@@ -17,6 +17,7 @@
 #include "base/mutex.h"
 #include "base/basictypes.h"
 #include "base/scoped_ptr.h"
+#include "gfx/texture_atlas.h"
 #include "math/lin/matrix4x4.h"
 #include "math/math_util.h"
 #include "math/geom2d.h"
@@ -233,14 +234,14 @@ private:
 
 struct Margins {
 	Margins() : top(0), bottom(0), left(0), right(0) {}
-	explicit Margins(uint8_t all) : top(all), bottom(all), left(all), right(all) {}
-	Margins(uint8_t horiz, uint8_t vert) : top(vert), bottom(vert), left(horiz), right(horiz) {}
-	Margins(uint8_t l, uint8_t t, uint8_t r, uint8_t b) : top(t), bottom(b), left(l), right(r) {}
+	explicit Margins(int8_t all) : top(all), bottom(all), left(all), right(all) {}
+	Margins(int8_t horiz, int8_t vert) : top(vert), bottom(vert), left(horiz), right(horiz) {}
+	Margins(int8_t l, int8_t t, int8_t r, int8_t b) : top(t), bottom(b), left(l), right(r) {}
 
-	uint8_t top;
-	uint8_t bottom;
-	uint8_t left;
-	uint8_t right;
+	int8_t top;
+	int8_t bottom;
+	int8_t left;
+	int8_t right;
 };
 
 enum LayoutParamsType {
@@ -324,7 +325,7 @@ public:
 	}
 
 	void SetEnabled(bool enabled) { enabled_ = enabled; }
-	bool GetEnabled() const { return enabled_; }
+	bool IsEnabled() const { return enabled_; }
 
 	void SetVisibility(Visibility visibility) { visibility_ = visibility; }
 	Visibility GetVisibility() const { return visibility_; }
@@ -412,23 +413,26 @@ private:
 class Slider : public Clickable {
 public:
 	Slider(int *value, int minValue, int maxValue, LayoutParams *layoutParams = 0)
-		: Clickable(layoutParams), value_(value), minValue_(minValue), maxValue_(maxValue) {}
+		: Clickable(layoutParams), value_(value), showPercent_(false), minValue_(minValue), maxValue_(maxValue), paddingLeft_(5), paddingRight_(50) {}
 	virtual void Draw(UIContext &dc);
 	virtual void Key(const KeyInput &input);
 	virtual void Touch(const TouchInput &input);
 	virtual void GetContentDimensions(const UIContext &dc, float &w, float &h) const;
-
+	void SetShowPercent(bool s) { showPercent_ = s; }
 private:
 	void Clamp();
 	int *value_;
+	bool showPercent_;
 	int minValue_;
 	int maxValue_;
+	float paddingLeft_;
+	float paddingRight_;
 };
 
 class SliderFloat : public Clickable {
 public:
 	SliderFloat(float *value, float minValue, float maxValue, LayoutParams *layoutParams = 0)
-		: Clickable(layoutParams), value_(value), minValue_(minValue), maxValue_(maxValue) {}
+		: Clickable(layoutParams), value_(value), minValue_(minValue), maxValue_(maxValue), paddingLeft_(5), paddingRight_(50) {}
 	virtual void Draw(UIContext &dc);
 	virtual void Key(const KeyInput &input);
 	virtual void Touch(const TouchInput &input);
@@ -439,6 +443,8 @@ private:
 	float *value_;
 	float minValue_;
 	float maxValue_;
+	float paddingLeft_;
+	float paddingRight_;
 };
 
 // Basic button that modifies a bitfield based on the pressed status. Supports multitouch.
@@ -485,16 +491,23 @@ public:
 class Choice : public ClickableItem {
 public:
 	Choice(const std::string &text, LayoutParams *layoutParams = 0)
-		: ClickableItem(layoutParams), text_(text), smallText_(), selected_(false) {}
+		: ClickableItem(layoutParams), text_(text), smallText_(), atlasImage_(-1), selected_(false) {}
 	Choice(const std::string &text, const std::string &smallText, bool selected = false, LayoutParams *layoutParams = 0)
-		: ClickableItem(layoutParams), text_(text), smallText_(smallText), selected_(selected) {}
+		: ClickableItem(layoutParams), text_(text), smallText_(smallText), atlasImage_(-1), selected_(selected) {}
+	
+	Choice(ImageID image, LayoutParams *layoutParams = 0)
+		: ClickableItem(layoutParams), atlasImage_(image), selected_(false) {}
 
 	virtual void GetContentDimensions(const UIContext &dc, float &w, float &h) const;
 	virtual void Draw(UIContext &dc);
 
 protected:
+	// hackery
+	virtual bool IsSticky() const { return false; }
+
 	std::string text_;
 	std::string smallText_;
+	ImageID atlasImage_;
 private:
 	bool selected_;
 };
@@ -504,14 +517,19 @@ class StickyChoice : public Choice {
 public:
 	StickyChoice(const std::string &text, const std::string &smallText = "", LayoutParams *layoutParams = 0)
 		: Choice(text, smallText, false, layoutParams) {}
+	StickyChoice(ImageID buttonImage, LayoutParams *layoutParams = 0)
+		: Choice(buttonImage, layoutParams) {}
 
 	virtual void Key(const KeyInput &key);
 	virtual void Touch(const TouchInput &touch);
 	virtual void FocusChanged(int focusFlags);
 
-	void Press() { down_ = true; dragging_ = false; }
+	void Press() { down_ = true; dragging_ = false;  }
 	void Release() { down_ = false; dragging_ = false; }
 	bool IsDown() { return down_; }
+protected:
+	// hackery
+	virtual bool IsSticky() const { return true; }
 };
 
 class InfoItem : public Item {
@@ -528,11 +546,7 @@ private:
 
 class ItemHeader : public Item {
 public:
-	ItemHeader(const std::string &text, LayoutParams *layoutParams = 0)
-		: Item(layoutParams), text_(text) {
-		layoutParams_->width = FILL_PARENT;
-		layoutParams_->height = 26;
-	}
+	ItemHeader(const std::string &text, LayoutParams *layoutParams = 0);
 	virtual void Draw(UIContext &dc);
 private:
 	std::string text_;
@@ -576,11 +590,15 @@ private:
 class Spacer : public InertView {
 public:
 	Spacer(LayoutParams *layoutParams = 0)
-		: InertView(layoutParams) {}
+		: InertView(layoutParams), size_(0.0f) {}
+	Spacer(float size, LayoutParams *layoutParams = 0)
+		: InertView(layoutParams), size_(size) {}
 	virtual void GetContentDimensions(const UIContext &dc, float &w, float &h) const {
-		w = 0.0f; h = 0.0f;
+		w = size_; h = size_;
 	}
 	virtual void Draw(UIContext &dc) {}
+private:
+	float size_;
 };
 
 class TextView : public InertView {

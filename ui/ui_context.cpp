@@ -8,40 +8,37 @@
 
 void UIContext::Begin() {
 	glstate.blend.enable();
-	glstate.blendFunc.set(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glstate.blendFuncSeparate.set(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glstate.cullFace.disable();
 	glstate.depthTest.disable();
+	glstate.dither.enable();
+#if !defined(USING_GLES2)
+	glstate.colorLogicOp.disable();
+#endif
 	if (uishader_)
 		glsl_bind(uishader_);
 	if (uitexture_)
 		uitexture_->Bind(0);
 
 	UIBegin(uishader_);
-	/*
-	if (uidrawbuffer_ && uishader_)
-		uidrawbuffer_->Begin();
-	if (uidrawbufferTop_ && uishader_)
-		uidrawbufferTop_->Begin();*/
 }
 
 void UIContext::BeginNoTex() {
 	glstate.blend.enable();
-	glstate.blendFunc.set(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glstate.blendFuncSeparate.set(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glstate.cullFace.disable();
 	glstate.depthTest.disable();
+	glstate.dither.enable();
+#if !defined(USING_GLES2)
+	glstate.colorLogicOp.disable();
+#endif
 	if (uishader_)
 		glsl_bind(uishader_);
 	if (uitexture_)
 		uitexture_->Bind(0);
 
 	UIBegin(uishadernotex_);
-	/*
-	if (uidrawbuffer_ && uishader_)
-		uidrawbuffer_->Begin();
-	if (uidrawbufferTop_ && uishader_)
-		uidrawbufferTop_->Begin();*/
 }
-
 
 void UIContext::RebindTexture() const {
 	if (uitexture_)
@@ -67,7 +64,10 @@ void UIContext::End() {
 // TODO: Support transformed bounds using stencil
 void UIContext::PushScissor(const Bounds &bounds) {
 	Flush();
-	scissorStack_.push_back(bounds);
+	Bounds clipped = bounds;
+	if (scissorStack_.size())
+		clipped.Clip(scissorStack_.back());
+	scissorStack_.push_back(clipped);
 	ActivateTopScissor();
 }
 

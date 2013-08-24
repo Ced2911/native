@@ -32,20 +32,20 @@ private:
 	int hatDown_;
 };
 
-class DialogScreen : public UIScreen {
+class UIDialogScreen : public UIScreen {
 public:
 	virtual void key(const KeyInput &key);
 };
 
 
-class PopupScreen : public UIScreen {
+class PopupScreen : public UIDialogScreen {
 public:
 	PopupScreen(std::string title, std::string button1 = "", std::string button2 = "");
 
 	virtual void CreatePopupContents(UI::ViewGroup *parent) = 0;
 	virtual void CreateViews();
 	virtual bool isTransparent() { return true; }
-	virtual void key(const KeyInput &key);
+	virtual void touch(const TouchInput &touch);
 
 protected:
 	virtual bool FillVertical() { return false; }
@@ -56,6 +56,7 @@ private:
 	UI::EventReturn OnOK(UI::EventParams &e);
 	UI::EventReturn OnCancel(UI::EventParams &e);
 
+	UI::ViewGroup *box_;
 	std::string title_;
 	std::string button1_;
 	std::string button2_;
@@ -63,16 +64,16 @@ private:
 
 class ListPopupScreen : public PopupScreen {
 public:
-	ListPopupScreen(std::string title) : PopupScreen(title) {}
-	ListPopupScreen(std::string title, const std::vector<std::string> &items, int selected, std::function<void(int)> callback)
-		: PopupScreen(title), adaptor_(items, selected), callback_(callback) {
+	ListPopupScreen(std::string title) : PopupScreen(title), showButtons_(false) {}
+	ListPopupScreen(std::string title, const std::vector<std::string> &items, int selected, std::function<void(int)> callback, bool showButtons = false)
+		: PopupScreen(title, "OK", "Cancel"), adaptor_(items, selected), callback_(callback), showButtons_(showButtons) {
 	}
 
 	UI::Event OnChoice;
 
 protected:
 	virtual bool FillVertical() { return true; }
-	virtual bool ShowButtons() { return false; }
+	virtual bool ShowButtons() { return showButtons_; }
 	void CreatePopupContents(UI::ViewGroup *parent);
 	UI::StringVectorListAdaptor adaptor_;
 	UI::ListView *listView_;
@@ -81,6 +82,7 @@ private:
 	UI::EventReturn OnListChoice(UI::EventParams &e);
 
 	std::function<void(int)> callback_;
+	bool showButtons_;
 };
 
 class MessagePopupScreen : public PopupScreen {

@@ -31,6 +31,8 @@ static JNIEnv *jniEnvUI;
 std::string frameCommand;
 std::string frameCommandParam;
 
+std::string systemName;
+
 const bool extraLog = true;
 
 static float left_joystick_x_async;
@@ -82,6 +84,10 @@ void LaunchEmail(const char *email_address) {
 void System_InputBox(const char *title, const char *defaultValue) {
 	frameCommand = "inputBox";
 	frameCommandParam = title;
+}
+
+std::string System_GetName() {
+	return systemName;
 }
 
 // Remember that all of these need initialization on init! The process
@@ -152,7 +158,7 @@ extern "C" void Java_com_henrikrydgard_libnative_NativeApp_init
 	ILOG("NativeApp::Init: APK path: %s", apkPath.c_str());
 	VFSRegister("", new ZipAssetReader(apkPath.c_str(), "assets/"));
 
-	std::string deviceType = GetJavaString(env, jdevicetype);
+	systemName = GetJavaString(env, jdevicetype);
 
 	std::string externalDir = GetJavaString(env, jexternalDir);
 	std::string user_data_path = GetJavaString(env, jdataDir) + "/";
@@ -238,6 +244,7 @@ extern "C" void Java_com_henrikrydgard_libnative_NativeRenderer_displayInit(JNIE
 
 		ILOG("Calling NativeInitGraphics(): dpi = %i, dp_xres = %i, dp_yres = %i", g_dpi, dp_xres, dp_yres);
 		NativeInitGraphics();
+		ILOG("NativeInitGraphics() completed");
 
 		dp_xscale = (float)dp_xres / pixel_xres;
 		dp_yscale = (float)dp_yres / pixel_yres;

@@ -51,8 +51,8 @@ void UIScreen::key(const KeyInput &key) {
 	}
 }
 
-void DialogScreen::key(const KeyInput &key) {
-	if ((key.flags & KEY_DOWN) && key.keyCode == NKCODE_ESCAPE || key.keyCode == NKCODE_BACK || key.keyCode == NKCODE_BUTTON_B) {
+void UIDialogScreen::key(const KeyInput &key) {
+	if ((key.flags & KEY_DOWN) && UI::IsEscapeKeyCode(key.keyCode)) {
 		screenManager()->finishDialog(this, DR_CANCEL);
 	} else {
 		UIScreen::key(key);
@@ -93,32 +93,42 @@ void UIScreen::axis(const AxisInput &axis) {
 	}
 }
 
-
 UI::EventReturn UIScreen::OnBack(UI::EventParams &e) {
 	screenManager()->finishDialog(this, DR_OK);
 	return UI::EVENT_DONE;
 }
 
-
 PopupScreen::PopupScreen(std::string title, std::string button1, std::string button2)
-	: title_(title), button1_(button1), button2_(button2) {}
+	: title_(title), button1_(button1), button2_(button2), box_(0) {}
+
+void PopupScreen::touch(const TouchInput &touch) {
+	if (!box_ || (touch.flags & TOUCH_DOWN) == 0 || touch.id != 0) {
+		UIDialogScreen::touch(touch);
+		return;
+	}
+
+	if (!box_->GetBounds().Contains(touch.x, touch.y))
+		screenManager()->finishDialog(this, DR_CANCEL);
+
+	UIDialogScreen::touch(touch);
+}
 
 void PopupScreen::CreateViews() {
 	using namespace UI;
 
 	root_ = new AnchorLayout(new LayoutParams(FILL_PARENT, FILL_PARENT));
 
-	LinearLayout *box = new LinearLayout(ORIENT_VERTICAL, 
+	box_ = new LinearLayout(ORIENT_VERTICAL, 
 		new AnchorLayoutParams(550, FillVertical() ? dp_yres - 30 : WRAP_CONTENT, dp_xres / 2, dp_yres / 2, NONE, NONE, true));
 
-	root_->Add(box);
-	box->SetBG(UI::Drawable(0xFF303030));
-	box->SetHasDropShadow(true);
+	root_->Add(box_);
+	box_->SetBG(UI::Drawable(0xFF303030));
+	box_->SetHasDropShadow(true);
 
 	View *title = new PopupHeader(title_);
-	box->Add(title);
+	box_->Add(title);
 
-	CreatePopupContents(box);
+	CreatePopupContents(box_);
 
 	if (ShowButtons()) {
 		// And the two buttons at the bottom.
@@ -137,14 +147,8 @@ void PopupScreen::CreateViews() {
 		buttonRow->Add(new Button(button1_, new LinearLayoutParams(1.0f)))->OnClick.Handle(this, &PopupScreen::OnOK);
 #endif
 
-		box->Add(buttonRow);
+		box_->Add(buttonRow);
 	}
-}
-
-void PopupScreen::key(const KeyInput &key) {
-	if ((key.flags & KEY_DOWN) && UI::IsEscapeKeyCode(key.keyCode))
-		screenManager()->finishDialog(this, DR_CANCEL);
-	UIScreen::key(key);
 }
 
 void MessagePopupScreen::CreatePopupContents(UI::ViewGroup *parent) {
@@ -184,12 +188,14 @@ void SliderPopupScreen::CreatePopupContents(UI::ViewGroup *parent) {
 	using namespace UI;
 	sliderValue_ = *value_;
 	slider_ = parent->Add(new Slider(&sliderValue_, minValue_, maxValue_, new LinearLayoutParams(UI::Margins(10, 5))));
+	UI::SetFocusedView(slider_);
 }
 
 void SliderFloatPopupScreen::CreatePopupContents(UI::ViewGroup *parent) {
 	using namespace UI;
 	sliderValue_ = *value_;
-	slider_ = parent->Add(new SliderFloat(&sliderValue_, minValue_, maxValue_));
+	slider_ = parent->Add(new SliderFloat(&sliderValue_, minValue_, maxValue_, new LinearLayoutParams(UI::Margins(10, 5))));
+	UI::SetFocusedView(slider_);
 }
 
 void SliderPopupScreen::OnCompleted(DialogResult result) {

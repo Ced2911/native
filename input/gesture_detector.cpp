@@ -2,11 +2,18 @@
 // TODO:
 // Zoom gesture a la http://www.zdnet.com/blog/burnette/how-to-use-multi-touch-in-android-2-part-6-implementing-the-pinch-zoom-gesture/1847
 
+#include "base/logging.h"
 #include "base/timeutil.h"
 #include "input/gesture_detector.h"
 
-GestureDetector::GestureDetector() : active_(0) {
 
+const float estimatedInertiaDamping = 0.75f;
+
+GestureDetector::GestureDetector()
+	: active_(0),
+		estimatedInertiaX_(0.0f),
+		estimatedInertiaY_(0.0f) {
+	memset(pointers, 0, sizeof(pointers));
 }
 
 TouchInput GestureDetector::Update(const TouchInput &touch, const Bounds &bounds) {
@@ -21,11 +28,19 @@ TouchInput GestureDetector::Update(const TouchInput &touch, const Bounds &bounds
 		p.lastY = touch.y;
 		p.distanceX = 0.0f;
 		p.distanceY = 0.0f;
+		estimatedInertiaX_ = 0.0f;
+		estimatedInertiaY_ = 0.0f;
 	} else if (touch.flags & TOUCH_UP) {
 		p.down = false;
 	} else {
 		p.distanceX += fabsf(touch.x - p.lastX);
 		p.distanceY += fabsf(touch.y - p.lastY);
+
+		estimatedInertiaX_ += touch.x - p.lastX;
+		estimatedInertiaY_ += touch.y - p.lastY;
+		estimatedInertiaX_ *= estimatedInertiaDamping;
+		estimatedInertiaY_ *= estimatedInertiaDamping;
+
 		p.lastX = touch.x;
 		p.lastY = touch.y;
 	}
@@ -47,13 +62,32 @@ TouchInput GestureDetector::Update(const TouchInput &touch, const Bounds &bounds
 	return touch;
 }
 
+void GestureDetector::UpdateFrame() {
+	estimatedInertiaX_ *= estimatedInertiaDamping;
+	estimatedInertiaY_ *= estimatedInertiaDamping;
+}
+
 bool GestureDetector::IsGestureActive(Gesture gesture) const {
 	return (active_ & gesture) != 0;
 }
 
-void GestureDetector::GetGestureInfo(Gesture gesture, float info[4]) {
-	if (gesture == GESTURE_DRAG_VERTICAL) {
+bool GestureDetector::GetGestureInfo(Gesture gesture, float info[4]) const {
+	if (!(active_ & gesture)) {
+		memset(info, 0, sizeof(float) * 4);
+		return false;
+	}
+
+	switch (gesture) {
+	case GESTURE_DRAG_HORIZONTAL:
+		info[0] = pointers[0].lastX - pointers[0].downX;
+		info[1] = estimatedInertiaX_;
+		return true;
+	case GESTURE_DRAG_VERTICAL:
 		info[0] = pointers[0].lastY - pointers[0].downY;
+		info[1] = estimatedInertiaY_;
+		return true;
+	default:
+		return false;
 	}
 /*
 

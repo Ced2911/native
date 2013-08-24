@@ -48,9 +48,6 @@
 #include "math.h"
 
 #ifdef PANDORA
-SDL_Joystick    *ljoy = NULL;
-SDL_Joystick    *rjoy = NULL;
-
 void enable_runfast()
 {
 	static const unsigned int x = 0x04086060;
@@ -190,6 +187,12 @@ void EGL_Close() {
 	g_eglContext = NULL;
 }
 #else
+#endif
+
+#ifdef PANDORA
+SDL_Joystick    *ljoy = NULL;
+SDL_Joystick    *rjoy = NULL;
+#else
 SDL_Joystick *joy = NULL;
 #endif
 
@@ -246,6 +249,11 @@ void LaunchEmail(const char *email_address)
 #else
 	ILOG("Would have opened your email client for %s but LaunchEmail is not implemented on this platform", email_address);
 #endif
+}
+
+std::string System_GetName() {
+	// TODO
+	return "SDL";
 }
 
 
