@@ -74,11 +74,24 @@ struct Style {
 	int image;  // where applicable.
 };
 
+struct FontStyle {
+	FontStyle() : atlasFont(0), sizePts(0), flags(0) {}
+	FontStyle(const char *name, int size) : atlasFont(0), fontName(name), sizePts(size), flags(0) {}
+	FontStyle(int atlasFnt, const char *name, int size) : atlasFont(atlasFnt), fontName(name), sizePts(size), flags(0) {}
+
+	int atlasFont;
+	// For native fonts:
+	std::string fontName;
+	int sizePts;
+	int flags;
+};
+
+
 // To use with an UI atlas.
 struct Theme {
-	int uiFont;
-	int uiFontSmall;
-	int uiFontSmaller;
+	FontStyle uiFont;
+	FontStyle uiFontSmall;
+	FontStyle uiFontSmaller;
 	int checkOn;
 	int checkOff;
 	int sliderKnob;
@@ -281,9 +294,9 @@ public:
 
 	// Please note that Touch is called ENTIRELY asynchronously from drawing!
 	// Can even be called on a different thread! This is to really minimize latency, and decouple
-	// touch response from the frame rate.
-	virtual void Key(const KeyInput &input) = 0;
-	virtual void Touch(const TouchInput &input) = 0;
+	// touch response from the frame rate. Same with Key and Axis.
+	virtual void Key(const KeyInput &input) {}
+	virtual void Touch(const TouchInput &input) {}
 	virtual void Axis(const AxisInput &input) {}
 	virtual void Update(const InputState &input_state) {}
 
@@ -400,7 +413,7 @@ class Button : public Clickable {
 public:
 	Button(const std::string &text, LayoutParams *layoutParams = 0)
 		: Clickable(layoutParams), text_(text) {}
-	
+
 	virtual void Draw(UIContext &dc);
 	virtual void GetContentDimensions(const UIContext &dc, float &w, float &h) const;
 	const std::string &GetText() const { return text_; }
@@ -491,15 +504,18 @@ public:
 class Choice : public ClickableItem {
 public:
 	Choice(const std::string &text, LayoutParams *layoutParams = 0)
-		: ClickableItem(layoutParams), text_(text), smallText_(), atlasImage_(-1), selected_(false) {}
+		: ClickableItem(layoutParams), text_(text), smallText_(), atlasImage_(-1), selected_(false), centered_(false) {}
 	Choice(const std::string &text, const std::string &smallText, bool selected = false, LayoutParams *layoutParams = 0)
-		: ClickableItem(layoutParams), text_(text), smallText_(smallText), atlasImage_(-1), selected_(selected) {}
+		: ClickableItem(layoutParams), text_(text), smallText_(smallText), atlasImage_(-1), selected_(selected), centered_(false) {}
 	
 	Choice(ImageID image, LayoutParams *layoutParams = 0)
 		: ClickableItem(layoutParams), atlasImage_(image), selected_(false) {}
 
 	virtual void GetContentDimensions(const UIContext &dc, float &w, float &h) const;
 	virtual void Draw(UIContext &dc);
+	virtual void SetCentered(bool c) {
+		centered_ = c;
+	}
 
 protected:
 	// hackery
@@ -508,6 +524,8 @@ protected:
 	std::string text_;
 	std::string smallText_;
 	ImageID atlasImage_;
+	bool centered_;
+
 private:
 	bool selected_;
 };
@@ -604,22 +622,19 @@ private:
 class TextView : public InertView {
 public:
 	TextView(const std::string &text, LayoutParams *layoutParams = 0) 
-		: InertView(layoutParams), text_(text), textScaleX_(1.0f), textScaleY_(1.0f), textAlign_(0) {}
+		: InertView(layoutParams), text_(text), textAlign_(0), small_(false) {}
 
-	TextView(const std::string &text, int textAlign, float textScale, LayoutParams *layoutParams = 0)
-		: InertView(layoutParams), text_(text), textScaleX_(textScale), textScaleY_(textScale), textAlign_(textAlign) {}
+	TextView(const std::string &text, int textAlign, bool small, LayoutParams *layoutParams = 0)
+		: InertView(layoutParams), text_(text), textAlign_(textAlign), small_(small) {}
 
 	virtual void GetContentDimensions(const UIContext &dc, float &w, float &h) const;
 	virtual void Draw(UIContext &dc);
 	void SetText(const std::string &text) { text_ = text; }
-	void SetTextScaleXY(float sx, float sy) { textScaleX_ = sx; textScaleY_ = sy; }
-	void SetTextScale(float scale) { textScaleX_ = scale; textScaleY_ = scale; }
-
+	void SetSmall(bool small) { small_ = small; }
 private:
 	std::string text_;
-	float textScaleX_;
-	float textScaleY_;
 	int textAlign_;
+	bool small_;
 };
 
 enum ImageSizeMode {

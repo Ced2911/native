@@ -36,7 +36,7 @@
 #include <xtl.h>
 #endif
 
-#if defined(_MSC_VER) && defined(_MT)
+#if defined(_MSC_VER) && defined(_MT) && !defined(_XBOX)
 // When linking with LIBCMT (the multithreaded C library), Microsoft recommends
 // using _beginthreadex instead of CreateThread.
 #define USE_BEGINTHREADEX

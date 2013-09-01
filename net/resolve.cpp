@@ -96,8 +96,7 @@ bool DNSResolve(const std::string &host, const std::string &service, addrinfo **
 
 	*res = NULL;
 	int result = getaddrinfo(host.c_str(), servicep, &hints, res);
-	if (result == EAI_AGAIN)
-	{
+	if (result == EAI_AGAIN) {
 		// Temporary failure.  Since this already blocks, let's just try once more.
 #ifdef _WIN32
 		Sleep(1);
@@ -107,9 +106,12 @@ bool DNSResolve(const std::string &host, const std::string &service, addrinfo **
 		result = getaddrinfo(host.c_str(), servicep, &hints, res);
 	}
 
-	if (result != 0)
-	{
+	if (result != 0) {
+#ifdef _WIN32
+		error = gai_strerrorA(result);
+#else
 		error = gai_strerror(result);
+#endif
 		if (*res != NULL)
 			freeaddrinfo(*res);
 		*res = NULL;

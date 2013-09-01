@@ -57,6 +57,7 @@ LOCAL_SRC_FILES :=\
     gfx_es2/glsl_program.cpp \
     gfx_es2/gl_state.cpp \
     gfx_es2/draw_buffer.cpp.arm \
+    gfx_es2/draw_text.cpp \
     gfx_es2/vertex_format.cpp \
     gfx_es2/fbo.cpp \
     gfx/gl_debug_log.cpp \
@@ -75,10 +76,11 @@ LOCAL_SRC_FILES :=\
     ui/screen.cpp \
     ui/virtual_input.cpp \
     util/random/perlin.cpp \
-    util/text/utf8.cpp
+    util/text/utf8.cpp \
+    util/hash/hash.cpp
 
-LOCAL_CFLAGS := -O3 -DUSING_GLES2 -fsigned-char -fno-strict-aliasing
-LOCAL_CPPFLAGS := -fno-exceptions -std=gnu++11 -frtti
+LOCAL_CFLAGS := -O3 -DUSING_GLES2 -fsigned-char -fno-strict-aliasing -Wall -Wno-multichar
+LOCAL_CPPFLAGS := -fno-exceptions -std=gnu++11 -fno-rtti -Wno-reorder -Wno-literal-suffix
 LOCAL_LDLIBS := -lz
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/ext/libzip
 
@@ -87,10 +89,10 @@ LOCAL_C_INCLUDES := $(LOCAL_PATH)/ext/libzip
 
 ifeq ($(TARGET_ARCH_ABI), armeabi-v7a)
 LOCAL_SRC_FILES += math/math_util.cpp 
-LOCAL_CFLAGS := $(LOCAL_CFLAGS) -DARM
+LOCAL_CFLAGS := $(LOCAL_CFLAGS) -DARM -DARMEABI_V7A -DARMV7
 else ifeq ($(TARGET_ARCH_ABI),armeabi)
 LOCAL_SRC_FILES += math/math_utilarmv6.cpp 
-LOCAL_CFLAGS := $(LOCAL_CFLAGS) -DARM
+LOCAL_CFLAGS := $(LOCAL_CFLAGS) -DARM -DARMEABI
 else ifeq ($(TARGET_ARCH_ABI),x86)
 LOCAL_SRC_FILES += math/math_util.cpp 
 LOCAL_CFLAGS := $(LOCAL_CFLAGS) -D_M_IX86

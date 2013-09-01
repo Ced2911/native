@@ -2,6 +2,8 @@
 #include <xtl.h>
 #elif defined(_WIN32)
 #include <windows.h>
+#undef min
+#undef max
 #endif
 #include <string.h>
 #include <stdarg.h>
@@ -10,6 +12,7 @@
 #include <sstream>
 #include <limits.h>
 
+#include <algorithm>
 #include <iomanip>
 
 #include "base/buffer.h"
@@ -19,9 +22,15 @@
 // Function Cross-Compatibility
 #define strcasecmp _stricmp
 
-void __ods__(const char *p) {
-	OutputDebugString(p);
+void OutputDebugStringUTF8(const char *p) {
+	wchar_t temp[2048];
+	int len = std::min(2047, (int)strlen(p));
+	int size = (int)MultiByteToWideChar(CP_UTF8, 0, p, len, NULL, 0);
+	MultiByteToWideChar(CP_UTF8, 0, p, len, temp, size);
+	temp[size] = 0;
+	OutputDebugString(temp);
 }
+
 #endif
 
 unsigned int parseHex(const char *_szValue)
@@ -216,11 +225,14 @@ void SplitString(const std::string& str, const char delim, std::vector<std::stri
 
 std::string ReplaceAll(std::string result, const std::string& src, const std::string& dest)
 {
+	size_t pos = 0;
 	while(1)
 	{
-		const size_t pos = result.find(src);
-		if (pos == result.npos) break;
+		pos = result.find(src, pos);
+		if (pos == result.npos) 
+			break;
 		result.replace(pos, src.size(), dest);
+		pos += dest.size();
 	}
 	return result;
 }

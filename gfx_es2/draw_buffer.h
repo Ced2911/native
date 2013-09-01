@@ -7,6 +7,7 @@
 #include "base/display.h"
 #include "gfx/gl_lost_manager.h"
 #include "gfx/texture_atlas.h"
+#include "math/geom2d.h"
 
 struct Atlas;
 
@@ -29,6 +30,12 @@ enum {
 	ROTATE_90DEG_LEFT = 256,
 	ROTATE_90DEG_RIGHT = 512,
 	ROTATE_180DEG = 1024,
+
+	// For "uncachable" text like debug log.
+	// Avoids using system font drawing as it's too slow.
+	// Not actually used here but is reserved for whatever system wraps DrawBuffer.
+	FLAG_DYNAMIC_ASCII = 2048,
+	FLAG_NO_PREFIX = 4096  // means to not process ampersands
 };
 
 struct GLSLProgram;
@@ -43,6 +50,8 @@ struct GradientStop {
 	uint32_t color;
 };
 
+class TextDrawer;
+
 class DrawBuffer : public GfxResourceHolder {
 public:
 	DrawBuffer();
@@ -54,6 +63,7 @@ public:
 	// TODO: Enforce these. Now Init is autocalled and shutdown not called.
 	void Init(bool registerAsHolder = true);
 	void Shutdown();
+
 	virtual void GLLost();
 
 	int Count() const { return count_; }
@@ -102,6 +112,9 @@ public:
 	void MeasureImage(ImageID atlas_image, float *w, float *h);
 	void DrawImage(ImageID atlas_image, float x, float y, float scale, Color color = COLOR(0xFFFFFF), int align = ALIGN_TOPLEFT);
 	void DrawImageStretch(ImageID atlas_image, float x1, float y1, float x2, float y2, Color color = COLOR(0xFFFFFF));
+	void DrawImageStretch(int atlas_image, const Bounds &bounds, Color color = COLOR(0xFFFFFF)) {
+		DrawImageStretch(atlas_image, bounds.x, bounds.y, bounds.x2(), bounds.y2(), color);
+	}
 	void DrawImageRotated(ImageID atlas_image, float x, float y, float scale, float angle, Color color = COLOR(0xFFFFFF), bool mirror_h = false);	// Always centers
 	void DrawTexRect(float x1, float y1, float x2, float y2, float u1, float v1, float u2, float v2, Color color);
 	// Results in 18 triangles. Kind of expensive for a button.
@@ -110,6 +123,8 @@ public:
 	void DrawImage2GridH(ImageID atlas_image, float x1, float y1, float x2, Color color = COLOR(0xFFFFFF), float scale = 1.0);
 
 	void MeasureText(int font, const char *text, float *w, float *h);
+	
+	
 	void DrawTextRect(int font, const char *text, float x, float y, float w, float h, Color color = 0xFFFFFFFF, int align = 0);
 	void DrawText(int font, const char *text, float x, float y, Color color = 0xFFFFFFFF, int align = 0);
 	void DrawTextShadow(int font, const char *text, float x, float y, Color color = 0xFFFFFFFF, int align = 0);
@@ -129,8 +144,9 @@ public:
 	void SetClipRect(float x1, float y1, float x2, float y2);
 	void NoClip();
 
+	static void DoAlign(int flags, float *x, float *y, float *w, float *h);
+
 private:
-	void DoAlign(int flags, float *x, float *y, float *w, float *h);
 	struct Vertex {
 		float x, y, z;
 		uint32_t rgba;
