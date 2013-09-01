@@ -29,6 +29,7 @@ void OutputDebugStringUTF8(const char *p) {
 	MultiByteToWideChar(CP_UTF8, 0, p, len, temp, size);
 	temp[size] = 0;
 	OutputDebugString(temp);
+
 }
 #else
 void OutputDebugStringUTF8(const char *p) {
