@@ -21,7 +21,7 @@
 #ifdef _WIN32
 // Function Cross-Compatibility
 #define strcasecmp _stricmp
-
+#ifndef NO_UNICODE
 void OutputDebugStringUTF8(const char *p) {
 	wchar_t temp[2048];
 	int len = std::min(2047, (int)strlen(p));
@@ -30,7 +30,11 @@ void OutputDebugStringUTF8(const char *p) {
 	temp[size] = 0;
 	OutputDebugString(temp);
 }
-
+#else
+void OutputDebugStringUTF8(const char *p) {
+	OutputDebugStringA(p);
+}
+#endif
 #endif
 
 unsigned int parseHex(const char *_szValue)

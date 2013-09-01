@@ -13,7 +13,11 @@
 */
 
 #ifdef _WIN32
+#ifndef _XBOX
 #include <windows.h>
+#else
+#include <xtl.h>
+#endif
 #undef min
 #undef max
 #endif

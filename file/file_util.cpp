@@ -167,8 +167,12 @@ static void stripTailDirSlashes(std::string &fname)
 // Returns true if file filename exists
 bool exists(const std::string &filename) {
 #ifdef _WIN32
+#ifndef NO_UNICODE
 	std::wstring wstr = ConvertUTF8ToWString(filename);
 	return GetFileAttributes(wstr.c_str()) != 0xFFFFFFFF;
+#else
+	return GetFileAttributes(filename.c_str()) != 0xFFFFFFFF;
+#endif
 #else
 	struct stat64 file_info;
 
@@ -194,7 +198,11 @@ bool getFileInfo(const char *path, FileInfo *fileInfo) {
 
 #ifdef _WIN32
 	WIN32_FILE_ATTRIBUTE_DATA attrs;
+#ifndef NO_UNICODE
 	if (!GetFileAttributesExW(ConvertUTF8ToWString(path).c_str(), GetFileExInfoStandard, &attrs)) {
+#else	
+	if (!GetFileAttributesEx(path, GetFileExInfoStandard, &attrs)) {
+#endif
 		fileInfo->size = 0;
 		fileInfo->isDirectory = false;
 		fileInfo->exists = false;
@@ -271,7 +279,6 @@ size_t getFilesInDir(const char *directory, std::vector<FileInfo> *files, const 
 	// Find the first file in the directory.
 	WIN32_FIND_DATA ffd;
 #ifdef UNICODE
-
 	HANDLE hFind = FindFirstFile((ConvertUTF8ToWString(directory) + L"\\*").c_str(), &ffd);
 #else
 	HANDLE hFind = FindFirstFile((std::string(directory) + "\\*").c_str(), &ffd);
@@ -283,7 +290,11 @@ size_t getFilesInDir(const char *directory, std::vector<FileInfo> *files, const 
 	// windows loop
 	do
 	{
+#ifdef UNICODE
 		const std::string virtualName = ConvertWStringToUTF8(ffd.cFileName);
+#else
+		const std::string virtualName = ffd.cFileName;
+#endif
 #else
 	struct dirent_large { struct dirent entry; char padding[FILENAME_MAX+1]; };
 	struct dirent_large diren;
@@ -340,7 +351,11 @@ size_t getFilesInDir(const char *directory, std::vector<FileInfo> *files, const 
 void deleteFile(const char *file)
 {
 #ifdef _WIN32
+#ifndef NO_UNICODE
 	if (!DeleteFile(ConvertUTF8ToWString(file).c_str())) {
+#else	
+	if (!DeleteFile(file)) {
+#endif
 		ELOG("Error deleting %s: %i", file, GetLastError());
 	}
 #else
@@ -354,7 +369,11 @@ void deleteFile(const char *file)
 void deleteDir(const char *dir)
 {
 #ifdef _WIN32
+#ifdef UNICODE
 	if (!RemoveDirectory(ConvertUTF8ToWString(dir).c_str())) {
+#else
+	if (!RemoveDirectory(dir)) {
+#endif
 		ELOG("Error deleting directory %s: %i", dir, GetLastError());
 	}
 #else
