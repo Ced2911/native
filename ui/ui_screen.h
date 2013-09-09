@@ -3,6 +3,8 @@
 #include "ui/screen.h"
 #include "ui/viewgroup.h"
 
+class I18NCategory;
+
 class UIScreen : public Screen {
 public:
 	UIScreen();
@@ -44,12 +46,12 @@ public:
 
 	virtual void CreatePopupContents(UI::ViewGroup *parent) = 0;
 	virtual void CreateViews();
-	virtual bool isTransparent() { return true; }
+	virtual bool isTransparent() const { return true; }
 	virtual void touch(const TouchInput &touch);
 
 protected:
-	virtual bool FillVertical() { return false; }
-	virtual bool ShowButtons() { return true; }
+	virtual bool FillVertical() const { return false; }
+	virtual bool ShowButtons() const { return true; }
 	virtual void OnCompleted(DialogResult result) {}
 
 private:
@@ -72,8 +74,8 @@ public:
 	UI::Event OnChoice;
 
 protected:
-	virtual bool FillVertical() { return true; }
-	virtual bool ShowButtons() { return showButtons_; }
+	virtual bool FillVertical() const { return true; }
+	virtual bool ShowButtons() const { return showButtons_; }
 	void CreatePopupContents(UI::ViewGroup *parent);
 	UI::StringVectorListAdaptor adaptor_;
 	UI::ListView *listView_;
@@ -91,8 +93,8 @@ public:
 	UI::Event OnChoice;
 
 protected:
-	virtual bool FillVertical() { return false; }
-	virtual bool ShowButtons() { return true; }
+	virtual bool FillVertical() const { return false; }
+	virtual bool ShowButtons() const { return true; }
 	void CreatePopupContents(UI::ViewGroup *parent);
 
 private:
@@ -102,14 +104,16 @@ private:
 
 // TODO: Need a way to translate OK and Cancel
 
+namespace UI {
+
 class SliderPopupScreen : public PopupScreen {
 public:
 	SliderPopupScreen(int *value, int minValue, int maxValue, const std::string &title) : PopupScreen(title, "OK", "Cancel"), value_(value), minValue_(minValue), maxValue_(maxValue) {}
-	void CreatePopupContents(UI::ViewGroup *parent);
+	void CreatePopupContents(ViewGroup *parent);
 
 private:
 	virtual void OnCompleted(DialogResult result);
-	UI::Slider *slider_;
+	Slider *slider_;
 	int *value_;
 	int sliderValue_;
 	int minValue_;
@@ -129,3 +133,74 @@ private:
 	float minValue_;
 	float maxValue_;
 };
+
+// Reads and writes value to determine the current selection.
+class PopupMultiChoice : public UI::Choice {
+public:
+	PopupMultiChoice(int *value, const std::string &text, const char **choices, int minVal, int numChoices,
+		I18NCategory *category, ScreenManager *screenManager, UI::LayoutParams *layoutParams = 0)
+		: UI::Choice(text, "", false, layoutParams), value_(value), choices_(choices), minVal_(minVal), numChoices_(numChoices), 
+		category_(category), screenManager_(screenManager) {
+			if (*value >= numChoices+minVal) *value = numChoices+minVal-1;
+			if (*value < minVal) *value = minVal;
+			OnClick.Handle(this, &PopupMultiChoice::HandleClick);
+			UpdateText();
+	}
+
+	virtual void Draw(UIContext &dc);
+
+	UI::Event OnChoice;
+
+private:
+	void UpdateText();
+	UI::EventReturn HandleClick(UI::EventParams &e);
+
+	void ChoiceCallback(int num);
+
+	int *value_;
+	const char **choices_;
+	int minVal_;
+	int numChoices_;
+	I18NCategory *category_;
+	ScreenManager *screenManager_;
+	std::string valueText_;
+};
+
+
+class PopupSliderChoice : public Choice {
+public:
+	PopupSliderChoice(int *value, int minValue, int maxValue, const std::string &text, ScreenManager *screenManager, LayoutParams *layoutParams = 0)
+		: Choice(text, "", false, layoutParams), value_(value), minValue_(minValue), maxValue_(maxValue), screenManager_(screenManager) {
+			OnClick.Handle(this, &PopupSliderChoice::HandleClick);
+	}
+
+	void Draw(UIContext &dc);
+
+private:
+	EventReturn HandleClick(EventParams &e);
+
+	int *value_;
+	int minValue_;
+	int maxValue_;
+	ScreenManager *screenManager_;
+};
+
+class PopupSliderChoiceFloat : public Choice {
+public:
+	PopupSliderChoiceFloat(float *value, float minValue, float maxValue, const std::string &text, ScreenManager *screenManager, LayoutParams *layoutParams = 0)
+		: Choice(text, "", false, layoutParams), value_(value), minValue_(minValue), maxValue_(maxValue), screenManager_(screenManager) {
+			OnClick.Handle(this, &PopupSliderChoiceFloat::HandleClick);
+	}
+
+	void Draw(UIContext &dc);
+
+private:
+	EventReturn HandleClick(EventParams &e);
+
+	float *value_;
+	float minValue_;
+	float maxValue_;
+	ScreenManager *screenManager_;
+};
+
+}  // namespace UI

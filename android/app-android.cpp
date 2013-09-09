@@ -32,6 +32,7 @@ std::string frameCommand;
 std::string frameCommandParam;
 
 std::string systemName;
+std::string langRegion;
 
 const bool extraLog = true;
 
@@ -86,8 +87,15 @@ void System_InputBox(const char *title, const char *defaultValue) {
 	frameCommandParam = title;
 }
 
-std::string System_GetName() {
-	return systemName;
+std::string System_GetProperty(SystemProperty prop) {
+	switch (prop) {
+	case SYSPROP_NAME:
+		return systemName;
+	case SYSPROP_LANGREGION:  // "en_US"
+		return langRegion;
+	default:
+		return "";
+	}
 }
 
 // Remember that all of these need initialization on init! The process
@@ -135,7 +143,7 @@ extern "C" void Java_com_henrikrydgard_libnative_NativeApp_audioConfig
 }
 
 extern "C" void Java_com_henrikrydgard_libnative_NativeApp_init
-	(JNIEnv *env, jclass, jint xxres, jint yyres, jint dpi, jstring jdevicetype, jstring japkpath,
+	(JNIEnv *env, jclass, jint xxres, jint yyres, jint dpi, jstring jdevicetype, jstring jlangRegion, jstring japkpath,
 	 jstring jdataDir, jstring jexternalDir, jstring jlibraryDir, jstring jinstallID, jboolean juseNativeAudio) {
 	jniEnvUI = env;
 
@@ -159,6 +167,7 @@ extern "C" void Java_com_henrikrydgard_libnative_NativeApp_init
 	VFSRegister("", new ZipAssetReader(apkPath.c_str(), "assets/"));
 
 	systemName = GetJavaString(env, jdevicetype);
+	langRegion = GetJavaString(env, jlangRegion);
 
 	std::string externalDir = GetJavaString(env, jexternalDir);
 	std::string user_data_path = GetJavaString(env, jdataDir) + "/";
