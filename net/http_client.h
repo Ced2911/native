@@ -8,7 +8,12 @@
 #include "base/functional.h"
 
 #ifdef _WIN32
+#ifndef _XBOX
 #include <winsock2.h>
+#else
+// Hackish
+typedef u32 addrinfo;
+#endif
 #else
 #if defined(__FreeBSD__) || defined(__SYMBIAN32__)
 #include <netinet/in.h>
