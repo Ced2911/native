@@ -8,17 +8,27 @@
 #include <unistd.h>
 #include <string>
 
+#include <bps/locale.h>           // Get locale
+#include <bps/navigator_invoke.h> // Receive invocation messages
 #include "BlackberryMain.h"
+#include "Core/Config.h"
 #include "base/NKCodeFromBlackberry.h"
+
+#include "UI/MiscScreens.h"
 
 // Simple implementations of System functions
 
 std::string System_GetProperty(SystemProperty prop) {
 	switch (prop) {
-	case SYSPROP_NAME:
-		return "Blackberry10";
-	case SYSPROP_LANGREGION:
-		return "en_US";
+	case SYSPROP_NAME: {
+		std::string name = "Blackberry10:";
+		return name + ((pixel_xres != pixel_yres) ? "Touch" : "QWERTY");
+	}
+	case SYSPROP_LANGREGION: {
+		char *locale = 0;
+		locale_get_locale(&locale);
+		return std::string(locale);
+	}
 	default:
 		return "";
 	}
@@ -40,7 +50,22 @@ void ShowKeyboard() {
 }
 
 void Vibrate(int length_ms) {
-	vibration_request(VIBRATION_INTENSITY_LOW, 200 /* intensity (1-100), duration (ms) */);
+	// Vibration: intensity strength(1-100), duration ms(0-5000)
+	// Intensity: LOW = 1, MEDIUM = 10, HIGH = 100
+	switch (length_ms) {
+	case -1: // Keyboard Tap
+		vibration_request(VIBRATION_INTENSITY_LOW, 50);
+		break;
+	case -2: // Virtual Key
+		vibration_request(VIBRATION_INTENSITY_LOW, 25);
+		break;
+	case -3: // Long Press
+		vibration_request(VIBRATION_INTENSITY_LOW, 50);
+		break;
+	default:
+		vibration_request(VIBRATION_INTENSITY_LOW, length_ms);
+		break;
+	}
 }
 
 void LaunchBrowser(const char *url)
@@ -135,15 +160,25 @@ void BlackberryMain::handleInput(screen_event_t screen_event)
 	// Gamepad
 	case SCREEN_EVENT_GAMEPAD:
 	case SCREEN_EVENT_JOYSTICK:
-		char device_id[16];
-		screen_device_t device;
-		screen_get_event_property_pv(screen_event, SCREEN_PROPERTY_DEVICE, (void**)&device);
-		screen_get_device_property_cv(device, SCREEN_PROPERTY_ID_STRING, sizeof(device_id), device_id);
+		int analog0[3];
 		screen_get_event_property_iv(screen_event, SCREEN_PROPERTY_BUTTONS, &buttons);
 		for (int i = 0; i < 32; i++) {
 			int mask = 1 << i;
 			if ((old_buttons & mask) != (buttons & mask))
 				NativeKey(KeyInput(DEVICE_ID_PAD_0, KeyMapPadBlackberrytoNative.find(mask)->second, (buttons & mask) ? KEY_DOWN : KEY_UP));
+		}
+		if (!screen_get_event_property_iv(screen_event, SCREEN_PROPERTY_ANALOG0, analog0)) {
+			for (int i = 0; i < 2; i++) {
+				AxisInput axis;
+				axis.axisId = JOYSTICK_AXIS_X + i;
+				// 1.2 to try to approximate the PSP's clamped rectangular range.
+				axis.value = 1.2 * analog0[i] / 128.0f;
+				if (axis.value > 1.0f) axis.value = 1.0f;
+				if (axis.value < -1.0f) axis.value = -1.0f;
+				axis.deviceId = DEVICE_ID_PAD_0;
+				axis.flags = 0;
+				NativeAxis(axis);
+			}
 		}
 		old_buttons = buttons;
 		break;
@@ -182,12 +217,12 @@ void BlackberryMain::startMain(int argc, char *argv[]) {
 
 	net::Init();
 	startDisplays();
-	NativeInit(argc, (const char **)argv, "/accounts/1000/shared/misc/", "app/native/assets/", "BADCOFFEE");
-	NativeInitGraphics();
 	screen_request_events(screen_cxt);
 	navigator_request_events(0);
 	dialog_request_events(0);
 	vibration_request_events(0);
+	NativeInit(argc, (const char **)argv, "/accounts/1000/shared/misc/", "app/native/assets/", "BADCOFFEE");
+	NativeInitGraphics();
 	audio = new BlackberryAudio();
 	runMain();
 }
@@ -209,6 +244,14 @@ void BlackberryMain::runMain() {
 			} else if (domain == navigator_get_domain()) {
 				switch(bps_event_get_code(event))
 				{
+				case NAVIGATOR_INVOKE_TARGET:
+					{
+						const navigator_invoke_invocation_t *invoke = navigator_invoke_event_get_invocation(event);
+						if(invoke) {
+							boot_filename = navigator_invoke_invocation_get_uri(invoke)+7; // Remove file://
+						}
+					}
+					break;
 				case NAVIGATOR_BACK:
 				case NAVIGATOR_SWIPE_DOWN:
 					NativeKey(KeyInput(DEVICE_ID_KEYBOARD, NKCODE_ESCAPE, KEY_DOWN));
@@ -241,6 +284,10 @@ void BlackberryMain::runMain() {
 		{
 			emulating = true;
 			switchDisplay(screen_emu);
+			if (g_Config.iShowFPSCounter == 4) {
+				int options = SCREEN_DEBUG_STATISTICS;
+				screen_set_window_property_iv(screen_win[0], SCREEN_PROPERTY_DEBUG, &options);
+			}
 		} else if (globalUIState != UISTATE_INGAME && emulating) {
 			emulating = false;
 			switchDisplay(screen_ui);

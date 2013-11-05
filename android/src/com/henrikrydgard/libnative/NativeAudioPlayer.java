@@ -4,21 +4,19 @@ import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioTrack;
 import android.util.Log;
-
+import com.henrikrydgard.libnative.AudioFocusChangeListener;
 
 public class NativeAudioPlayer {
 	private String TAG = "NativeAudioPlayer";
 	private Thread thread;
 	private boolean playing_;
 	
-	public NativeAudioPlayer() {
-	}
-	
 	// Calling stop() is allowed at any time, whether stopped or not.
 	// If playing, blocks until not.
 	public synchronized void stop() {
 		if (thread != null) {
 			waitUntilDone();
+			
 		} else {
 			Log.e(TAG, "Was already stopped");
 		}
@@ -32,7 +30,25 @@ public class NativeAudioPlayer {
 			Log.e(TAG, "Was already playing");
 		}
 	} 
-
+	
+	//keep this static so we can call this even if we don't
+	//instantiate NativeAudioPlayer
+	public static void gainAudioFocus(AudioManager audioManager, AudioFocusChangeListener focusChangeListener) {
+		if (audioManager != null) {
+			audioManager.requestAudioFocus(focusChangeListener,
+					AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN);
+		}
+	}
+	
+	//keep this static so we can call this even if we don't
+	//instantiate NativeAudioPlayer
+	public static void loseAudioFocus(AudioManager audioManager,AudioFocusChangeListener focusChangeListener){
+		if (audioManager != null) {
+			audioManager.abandonAudioFocus(focusChangeListener);
+		}
+	}
+	
+	
 	private void playStreaming() {
 		playing_ = true;
 		thread = new Thread(new Runnable() {

@@ -25,26 +25,6 @@ QTM_USE_NAMESPACE
 #include "base/NKCodeFromQt.h"
 
 // Input
-const int buttonMappings[18] = {
-	Qt::Key_X + 0x20,   //A
-	Qt::Key_S + 0x20,   //B
-	Qt::Key_Z + 0x20,   //X
-	Qt::Key_A + 0x20,   //Y
-	Qt::Key_Q + 0x20,   //LBUMPER
-	Qt::Key_W + 0x20,   //RBUMPER
-	Qt::Key_1,          //START
-	Qt::Key_2,          //SELECT
-	Qt::Key_Up,         //UP
-	Qt::Key_Down,       //DOWN
-	Qt::Key_Left,       //LEFT
-	Qt::Key_Right,      //RIGHT
-	0,                  //MENU (event)
-	Qt::Key_Backspace,  //BACK
-	Qt::Key_I + 0x20,   //JOY UP
-	Qt::Key_K + 0x20,   //JOY DOWN
-	Qt::Key_J + 0x20,   //JOY LEFT
-	Qt::Key_L + 0x20,   //JOY RIGHT
-};
 void SimulateGamepad(InputState *input);
 
 //GUI
@@ -56,7 +36,9 @@ public:
 		QGLWidget(parent)
 	{
 		setAttribute(Qt::WA_AcceptTouchEvents);
+#if QT_VERSION < 0x50000
 		setAttribute(Qt::WA_LockLandscapeOrientation);
+#endif
 #ifdef USING_GLES2
 		acc = new QAccelerometer(this);
 		acc->start();
@@ -164,7 +146,6 @@ protected:
 
 	void paintGL()
 	{
-		SimulateGamepad(&input_state);
 		updateAccelerometer();
 		UpdateInputState(&input_state);
 		NativeUpdate(input_state);
@@ -197,40 +178,50 @@ private:
 // Audio
 #define AUDIO_FREQ 44100
 #define AUDIO_CHANNELS 2
-#define AUDIO_SAMPLES 1024
+#define AUDIO_SAMPLES 2048
 #define AUDIO_SAMPLESIZE 16
 class MainAudio: public QObject
 {
 	Q_OBJECT
 public:
 	MainAudio() {
+	}
+	~MainAudio() {
+		if (feed != NULL) {
+			killTimer(timer);
+			feed->close();
+		}
+		if (output) {
+			output->stop();
+			delete output;
+		}
+		if (mixbuf)
+			free(mixbuf);
+	}
+public slots:
+	void run() {
 		QAudioFormat fmt;
-		fmt.setFrequency(AUDIO_FREQ);
+		fmt.setSampleRate(AUDIO_FREQ);
 		fmt.setCodec("audio/pcm");
 		fmt.setChannelCount(AUDIO_CHANNELS);
 		fmt.setSampleSize(AUDIO_SAMPLESIZE);
 		fmt.setByteOrder(QAudioFormat::LittleEndian);
 		fmt.setSampleType(QAudioFormat::SignedInt);
-		mixlen = 2*AUDIO_CHANNELS*AUDIO_SAMPLES;
+		mixlen = 5*2*AUDIO_CHANNELS*AUDIO_SAMPLES;
 		mixbuf = (char*)malloc(mixlen);
 		output = new QAudioOutput(fmt);
 		output->setBufferSize(mixlen);
 		feed = output->start();
-		timer = startTimer(1000*AUDIO_SAMPLES / AUDIO_FREQ);
-	}
-	~MainAudio() {
-		killTimer(timer);
-		feed->close();
-		output->stop();
-		delete output;
-		free(mixbuf);
+		if (feed != NULL)
+			timer = startTimer(1000*AUDIO_SAMPLES / AUDIO_FREQ);
 	}
 
 protected:
 	void timerEvent(QTimerEvent *) {
 		memset(mixbuf, 0, mixlen);
-		NativeMix((short *)mixbuf, mixlen / 4);
-		feed->write(mixbuf, mixlen);
+		size_t frames = NativeMix((short *)mixbuf, 5*AUDIO_SAMPLES);
+		if (frames > 0)
+			feed->write(mixbuf, sizeof(short) * 2 * frames);
 	}
 private:
 	QIODevice* feed;

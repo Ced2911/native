@@ -7,10 +7,11 @@
 // We need this to compile without hundreds of std::bind errors in Visual Studio 2012
 // since by default VARIADIC_MAX is something low like 3, 4, or 5.
 // It's a good idea to include this file wherever std::bind is being used with more than 3, 4 or 5 args.
-#if _MSC_VER >= 1700
-#undef _VARIADIC_MAX
-#define _VARIADIC_MAX 10
-#endif
+// Visual Studio 2013 doesn't need this after all, so we can simply check for equality.
+#if _MSC_VER == 1700
+ #undef _VARIADIC_MAX
+ #define _VARIADIC_MAX 10
+ #endif
 
 #endif
 
@@ -68,20 +69,35 @@ typedef intptr_t ssize_t;
 
 inline uint8 swap8(uint8 _data) {return _data;}
 
+// Just in case this has been defined by platform
+#undef swap16
+#undef swap32
+#undef swap64
+
 #ifdef _WIN32
 inline uint16 swap16(uint16 _data) {return _byteswap_ushort(_data);}
 inline uint32 swap32(uint32 _data) {return _byteswap_ulong (_data);}
 inline uint64 swap64(uint64 _data) {return _byteswap_uint64(_data);}
-#elif __linux__
+#elif defined(ARM)
+inline uint16 swap16 (uint16 _data) { uint32 data = _data; __asm__ ("rev16 %0, %1\n" : "=l" (data) : "l" (data)); return (uint16)data;} 
+inline uint32 swap32 (uint32 _data) {__asm__ ("rev %0, %1\n" : "=l" (_data) : "l" (_data)); return _data;} 
+inline uint64 swap64(uint64 _data) {return ((uint64)swap32(_data) << 32) | swap32(_data >> 32);}
+#elif __linux__ && !defined(ANDROID)
 #include <byteswap.h>
-#undef swap16
-#undef swap32
-#undef swap64
 inline uint16 swap16(uint16 _data) {return bswap_16(_data);}
 inline uint32 swap32(uint32 _data) {return bswap_32(_data);}
 inline uint64 swap64(uint64 _data) {return bswap_64(_data);}
+#elif defined(__FreeBSD__)
+#include <sys/endian.h>
+inline uint16 swap16(uint16 _data) {return bswap16(_data);}
+inline uint32 swap32(uint32 _data) {return bswap32(_data);}
+inline uint64 swap64(uint64 _data) {return bswap64(_data);}
+#elif defined(__GNUC__)
+inline uint16 swap16(uint16 _data) {return (_data >> 8) | (_data << 8);}
+inline uint32 swap32(uint32 _data) {return __builtin_bswap32(_data);}
+inline uint64 swap64(uint64 _data) {return __builtin_bswap64(_data);}
 #else
-// Slow generic implementation.
+// Slow generic implementation. Hopefully this never hits
 inline uint16 swap16(uint16 data) {return (data >> 8) | (data << 8);}
 inline uint32 swap32(uint32 data) {return (swap16(data) << 16) | swap16(data >> 16);}
 inline uint64 swap64(uint64 data) {return ((uint64)swap32(data) << 32) | swap32(data >> 32);}

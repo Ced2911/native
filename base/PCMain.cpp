@@ -8,36 +8,31 @@
 #include <shlobj.h>
 #include <shlwapi.h>
 #include <ShellAPI.h>
-#else
-#include <pwd.h>
-#include <unistd.h>
-#endif
-
-#include <string>
-#include <map>
-#ifdef _WIN32
 #include "SDL/SDL.h"
 #include "SDL/SDL_timer.h"
 #include "SDL/SDL_audio.h"
 #include "SDL/SDL_video.h"
 #else
+#include <pwd.h>
 #include "SDL.h"
 #include "SDL_timer.h"
 #include "SDL_audio.h"
 #include "SDL_video.h"
 #endif
+#include "Core/Core.h"
+#include "Core/Config.h"
 #include "base/display.h"
 #include "base/logging.h"
 #include "base/timeutil.h"
 #include "gfx_es2/gl_state.h"
-#include "gfx_es2/glsl_program.h"
-#include "file/zip_read.h"
 #include "input/input_state.h"
 #include "input/keycodes.h"
-#include "base/NKCodeFromSDL.h"
-#include "base/NativeApp.h"
 #include "net/resolve.h"
+#include "base/NKCodeFromSDL.h"
 #include "util/const_map.h"
+#include "math/math_util.h"
+
+GlobalUIState lastUIState = UISTATE_MENU;
 
 #if defined(MAEMO) || defined(PANDORA)
 #define EGL
@@ -46,23 +41,6 @@
 #include <X11/Xutil.h>
 #include "SDL_syswm.h"
 #include "math.h"
-
-#ifdef PANDORA
-void enable_runfast()
-{
-	static const unsigned int x = 0x04086060;
-	static const unsigned int y = 0x03000000;
-	int r;
-	asm volatile (
-		"fmrx	%0, fpscr			\n\t"	//r0 = FPSCR
-		"and	%0, %0, %1			\n\t"	//r0 = r0 & 0x04086060
-		"orr	%0, %0, %2			\n\t"	//r0 = r0 | 0x03000000
-		"fmxr	fpscr, %0			\n\t"	//FPSCR = r0
-		: "=r"(r)
-		: "r"(x), "r"(y)
-	);
-}
-#endif
 
 EGLDisplay          g_eglDisplay    = NULL;
 EGLContext          g_eglContext    = NULL;
@@ -228,6 +206,12 @@ void LaunchBrowser(const char *url)
 {
 #ifdef _WIN32
 	ShellExecute(NULL, "open", url, NULL, NULL, SW_SHOWNORMAL);
+#elif __linux__
+	std::string command = std::string("xdg-open ") + url;
+	system(command.c_str());
+#elif __APPLE__
+	std::string command = std::string("open ") + url;
+	system(command.c_str());
 #else
 	ILOG("Would have gone to %s but LaunchBrowser is not implemented on this platform", url);
 #endif
@@ -237,6 +221,12 @@ void LaunchMarket(const char *url)
 {
 #ifdef _WIN32
 	ShellExecute(NULL, "open", url, NULL, NULL, SW_SHOWNORMAL);
+#elif __linux__
+	std::string command = std::string("xdg-open ") + url;
+	system(command.c_str());
+#elif __APPLE__
+	std::string command = std::string("open ") + url;
+	system(command.c_str());
 #else
 	ILOG("Would have gone to %s but LaunchMarket is not implemented on this platform", url);
 #endif
@@ -246,6 +236,12 @@ void LaunchEmail(const char *email_address)
 {
 #ifdef _WIN32
 	ShellExecute(NULL, "open", (std::string("mailto:") + email_address).c_str(), NULL, NULL, SW_SHOWNORMAL);
+#elif __linux__
+	std::string command = std::string("xdg-email ") + email_address;
+	system(command.c_str());
+#elif __APPLE__
+	std::string command = std::string("open mailto:") + email_address;
+	system(command.c_str());
 #else
 	ILOG("Would have opened your email client for %s but LaunchEmail is not implemented on this platform", email_address);
 #endif
@@ -264,52 +260,14 @@ std::string System_GetProperty(SystemProperty prop) {
 
 InputState input_state;
 
-
-const int buttonMappings[14] = {
-#ifdef PANDORA
-	SDLK_PAGEDOWN,  //X => cross
-	SDLK_END,       //B => circle
-	SDLK_HOME,      //A => box
-	SDLK_PAGEUP,    //Y => triangle
-	SDLK_RSHIFT,    //LBUMPER
-	SDLK_RCTRL,	    //RBUMPER
-	SDLK_LALT,      //START
-	SDLK_LCTRL,     //SELECT
-#else
-	SDLK_z,         //A
-	SDLK_x,         //B
-	SDLK_a,         //X
-	SDLK_s,	        //Y
-	SDLK_q,         //LBUMPER
-	SDLK_w,         //RBUMPER
-	SDLK_SPACE,     //START
-	SDLK_v,	        //SELECT
-#endif
-	SDLK_UP,        //UP
-	SDLK_DOWN,      //DOWN
-	SDLK_LEFT,      //LEFT
-	SDLK_RIGHT,     //RIGHT
-#ifdef PANDORA
-	SDLK_SPACE,     //MENU
-#else
-	SDLK_m,         //MENU
-#endif
-	SDLK_BACKSPACE,	//BACK
-};
-
 void SimulateGamepad(const uint8 *keys, InputState *input) {
 	input->pad_buttons = 0;
 	input->pad_lstick_x = 0;
 	input->pad_lstick_y = 0;
 	input->pad_rstick_x = 0;
 	input->pad_rstick_y = 0;
-	/*
-	for (int b = 0; b < 14; b++) {
-		if (keys[buttonMappings[b]])
-			input->pad_buttons |= (1<<b);
-	}
-	*/
 
+// TODO: Use NativeAxis for joy instead.
 #ifdef PANDORA
 	if ((ljoy)||(rjoy)) {
 		SDL_JoystickUpdate();
@@ -322,23 +280,6 @@ void SimulateGamepad(const uint8 *keys, InputState *input) {
 			input->pad_rstick_y = max(min(SDL_JoystickGetAxis(rjoy, 1) / 32000.0f, 1.0f), -1.0f);
 		}
 	}
-#else
-	if (keys[SDLK_i])
-		input->pad_lstick_y=1;
-	else if (keys[SDLK_k])
-		input->pad_lstick_y=-1;
-	if (keys[SDLK_j])
-		input->pad_lstick_x=-1;
-	else if (keys[SDLK_l])
-		input->pad_lstick_x=1;
-	if (keys[SDLK_KP8])
-		input->pad_rstick_y=1;
-	else if (keys[SDLK_KP2])
-		input->pad_rstick_y=-1;
-	if (keys[SDLK_KP4])
-		input->pad_rstick_x=-1;
-	else if (keys[SDLK_KP6])
-		input->pad_rstick_x=1;
 #endif
 }
 
@@ -352,66 +293,15 @@ extern void mixaudio(void *userdata, Uint8 *stream, int len) {
 int main(int argc, char *argv[]) {
 	std::string app_name;
 	std::string app_name_nice;
-
-	float zoom = 1.0f;
-	bool tablet = false;
-	bool aspect43 = false;
-	const char *zoomenv = getenv("ZOOM");
-	const char *tabletenv = getenv("TABLET");
-	const char *ipad = getenv("IPAD");
-
-	if (zoomenv) {
-		zoom = atof(zoomenv);
-	}
-	if (tabletenv) {
-		tablet = atoi(tabletenv) ? true : false;
-	}
-	if (ipad) {
-		aspect43 = true;
-	}
-
 	bool landscape;
 	NativeGetAppInfo(&app_name, &app_name_nice, &landscape);
-
-	// Change these to temporarily test other resolutions.
-	aspect43 = false;
-	tablet = false;
-	float density = 1.0f;
-	//zoom = 1.5f;
-
-	if (landscape) {
-		if (tablet) {
-			pixel_xres = 1280 * zoom;
-			pixel_yres = 800 * zoom;
-		} else if (aspect43) {
-			pixel_xres = 1024 * zoom;
-			pixel_yres = 768 * zoom;
-		} else {
-			pixel_xres = 960 * zoom;
-			pixel_yres = 544 * zoom;
-		}
-	} else {
-		// PC development hack for more space
-		//pixel_xres = 1580 * zoom;
-		//pixel_yres = 1000 * zoom;
-		if (tablet) {
-			pixel_xres = 800 * zoom;
-			pixel_yres = 1280 * zoom;
-		} else if (aspect43) {
-			pixel_xres = 768 * zoom;
-			pixel_yres = 1024 * zoom;
-		} else {
-			pixel_xres = 480 * zoom;
-			pixel_yres = 800 * zoom;
-		}
-	}
-
 
 	net::Init();
 #ifdef __APPLE__
 	// Make sure to request a somewhat modern GL context at least - the
 	// latest supported by MacOSX (really, really sad...)
-	// Requires SDL 2.0 (which is even more sad, as that hasn't been released yet)
+	// Requires SDL 2.0
+	// We really should upgrade to SDL 2.0 soon.
 	//SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
 	//SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
 #endif
@@ -434,13 +324,30 @@ int main(int argc, char *argv[]) {
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 	SDL_GL_SetAttribute(SDL_GL_SWAP_CONTROL, 1);
 
-	if (SDL_SetVideoMode(pixel_xres, pixel_yres, 0,
+	int mode;
 #ifdef USING_GLES2
-		SDL_SWSURFACE | SDL_FULLSCREEN
+	mode = SDL_SWSURFACE | SDL_FULLSCREEN;
 #else
-		SDL_OPENGL
+	mode = SDL_OPENGL;
+	for (int i = 1; i < argc; i++)
+		if (!strcmp(argv[i],"--fullscreen"))
+			mode |= SDL_FULLSCREEN;
 #endif
-		) == NULL) {
+	if (mode & SDL_FULLSCREEN) {
+		const SDL_VideoInfo* info = SDL_GetVideoInfo();
+		pixel_xres = info->current_w;
+		pixel_yres = info->current_h;
+		g_Config.bFullScreen = true;
+	} else {
+		// set a sensible default resolution (2x)
+		pixel_xres = 480 * 2;
+		pixel_yres = 272 * 2;
+		g_Config.bFullScreen = false;
+	}
+	dp_xres = (float)pixel_xres;
+	dp_yres = (float)pixel_yres;
+
+	if (SDL_SetVideoMode(pixel_xres, pixel_yres, 0, mode) == NULL) {
 		fprintf(stderr, "SDL SetVideoMode failed: Unable to create OpenGL screen: %s\n", SDL_GetError());
 		SDL_Quit();
 		return(2);
@@ -494,12 +401,7 @@ int main(int argc, char *argv[]) {
 	NativeInit(argc, (const char **)argv, path, "/tmp", "BADCOFFEE");
 #endif
 
-	dp_xres = (float)pixel_xres * density / zoom;
-	dp_yres = (float)pixel_yres * density / zoom;
 	pixel_in_dps = (float)pixel_xres / dp_xres;
-
-	NativeInitGraphics();
-	glstate.viewport.set(0, 0, pixel_xres, pixel_yres);
 
 	float dp_xscale = (float)dp_xres / pixel_xres;
 	float dp_yscale = (float)dp_yres / pixel_yres;
@@ -508,19 +410,18 @@ int main(int argc, char *argv[]) {
 
 	printf("Pixels: %i x %i\n", pixel_xres, pixel_yres);
 	printf("Virtual pixels: %i x %i\n", dp_xres, dp_yres);
+	NativeInitGraphics();
 
 	SDL_AudioSpec fmt;
 	fmt.freq = 44100;
 	fmt.format = AUDIO_S16;
 	fmt.channels = 2;
-	fmt.samples = 1024;
+	fmt.samples = 2048;
 	fmt.callback = &mixaudio;
 	fmt.userdata = (void *)0;
 
-	if (SDL_OpenAudio(&fmt, NULL) < 0) {
+	if (SDL_OpenAudio(&fmt, NULL) < 0)
 		ELOG("Failed to open audio: %s", SDL_GetError());
-		return 1;
-	}
 
 	// Audio must be unpaused _after_ NativeInit()
 	SDL_PauseAudio(0);
@@ -532,13 +433,13 @@ int main(int argc, char *argv[]) {
 		if (numjoys > 1)
 			rjoy = SDL_JoystickOpen(1);
 	}
-	enable_runfast(); // VFPv2 RunFast
 #else
 	SDL_JoystickEventState(SDL_ENABLE);
 	if (numjoys > 0) {
 		joy = SDL_JoystickOpen(0);
 	}
 #endif
+	EnableFZ();
 
 	// This is just a standard mapping that matches the X360 controller on MacOSX. Names will probably be all wrong
 	// on other controllers.
@@ -619,6 +520,25 @@ int main(int argc, char *argv[]) {
 					break;
 				}
 
+			case SDL_JOYHATMOTION:
+				{
+					AxisInput axisX;
+					AxisInput axisY;
+					axisX.axisId = JOYSTICK_AXIS_HAT_X;
+					axisY.axisId = JOYSTICK_AXIS_HAT_Y;
+					axisX.deviceId = DEVICE_ID_PAD_0;
+					axisY.deviceId = DEVICE_ID_PAD_0;
+					axisX.value = 0.0f;
+					axisY.value = 0.0f;
+					if (event.jhat.value & SDL_HAT_LEFT) axisX.value = -1.0f;
+					if (event.jhat.value & SDL_HAT_RIGHT) axisX.value = 1.0f;
+					if (event.jhat.value & SDL_HAT_DOWN) axisY.value = -1.0f;
+					if (event.jhat.value & SDL_HAT_UP) axisY.value = 1.0f;
+					NativeAxis(axisX);
+					NativeAxis(axisY);
+				}
+				break;
+
 			case SDL_KEYDOWN:
 				{
 					int k = event.key.keysym.sym;
@@ -627,7 +547,6 @@ int main(int argc, char *argv[]) {
 					key.keyCode = KeyMapRawSDLtoNative.find(k)->second;
 					key.deviceId = DEVICE_ID_KEYBOARD;
 					NativeKey(key);
-					g_buttonTracker.Process(key);
 					break;
 				}
 			case SDL_KEYUP:
@@ -638,7 +557,6 @@ int main(int argc, char *argv[]) {
 					key.keyCode = KeyMapRawSDLtoNative.find(k)->second;
 					key.deviceId = DEVICE_ID_KEYBOARD;
 					NativeKey(key);
-					g_buttonTracker.Process(key);
 					break;
 				}
 			case SDL_MOUSEBUTTONDOWN:
@@ -755,6 +673,15 @@ int main(int argc, char *argv[]) {
 		UpdateInputState(&input_state);
 		NativeUpdate(input_state);
 		NativeRender();
+#ifndef MAEMO
+		if (lastUIState != globalUIState) {
+			lastUIState = globalUIState;
+			if (lastUIState == UISTATE_INGAME && g_Config.bFullScreen && !g_Config.bShowTouchControls)
+				SDL_ShowCursor(SDL_DISABLE);
+			if (lastUIState != UISTATE_INGAME && g_Config.bFullScreen)
+				SDL_ShowCursor(SDL_ENABLE);
+		}
+#endif
 
 		EndInputState(&input_state);
 
@@ -771,12 +698,6 @@ int main(int argc, char *argv[]) {
 			lastT = t;
 		}
 #endif
-
-		// Simple frame rate limiting
-//		while (time_now() < t + 1.0f/60.0f) {
-//			sleep_ms(0);
-//			time_update();
-//		}
 		time_update();
 		t = time_now();
 		framecount++;

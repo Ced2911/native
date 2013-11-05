@@ -55,9 +55,11 @@ LOCAL_SRC_FILES :=\
     thread/prioritizedworkqueue.cpp \
     thread/threadpool.cpp \
     gfx_es2/glsl_program.cpp \
-    gfx_es2/gl_state.cpp \
+    gfx_es2/gpu_features.cpp \
+    gfx_es2/gl_state.cpp.arm \
+    gfx_es2/gl3stub.c \
     gfx_es2/draw_buffer.cpp.arm \
-    gfx_es2/draw_text.cpp \
+    gfx_es2/draw_text.cpp.arm \
     gfx_es2/vertex_format.cpp \
     gfx_es2/fbo.cpp \
     gfx/gl_debug_log.cpp \
@@ -79,22 +81,18 @@ LOCAL_SRC_FILES :=\
     util/text/utf8.cpp \
     util/hash/hash.cpp
 
-LOCAL_CFLAGS := -O3 -DUSING_GLES2 -fsigned-char -fno-strict-aliasing -Wall -Wno-multichar
+LOCAL_CFLAGS := -O3 -DUSING_GLES2 -fsigned-char -fno-strict-aliasing -Wall -Wno-multichar -D__STDC_CONSTANT_MACROS
 LOCAL_CPPFLAGS := -fno-exceptions -std=gnu++11 -fno-rtti -Wno-reorder -Wno-literal-suffix
 LOCAL_LDLIBS := -lz
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/ext/libzip
 
 #Portable native and separate code on android in future is easy you needs add files 
 #by ($(target_arch_ABI),arquitecture (armeabi-v7a , armeabi , x86 , MIPS)
-
 ifeq ($(TARGET_ARCH_ABI), armeabi-v7a)
-LOCAL_SRC_FILES += math/math_util.cpp 
 LOCAL_CFLAGS := $(LOCAL_CFLAGS) -DARM -DARMEABI_V7A -DARMV7
 else ifeq ($(TARGET_ARCH_ABI),armeabi)
-LOCAL_SRC_FILES += math/math_utilarmv6.cpp 
-LOCAL_CFLAGS := $(LOCAL_CFLAGS) -DARM -DARMEABI
+LOCAL_CFLAGS := $(LOCAL_CFLAGS) -DARM -DARMEABI -march=armv6
 else ifeq ($(TARGET_ARCH_ABI),x86)
-LOCAL_SRC_FILES += math/math_util.cpp 
 LOCAL_CFLAGS := $(LOCAL_CFLAGS) -D_M_IX86
 endif
 

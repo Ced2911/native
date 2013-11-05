@@ -23,7 +23,7 @@ protected:
 	virtual void CreateViews() = 0;
 	virtual void DrawBackground(UIContext &dc) {}
 
-	void RecreateViews() { recreateViews_ = true; }
+	virtual void  RecreateViews() { recreateViews_ = true; }
 
 	UI::ViewGroup *root_;
 
@@ -36,7 +36,11 @@ private:
 
 class UIDialogScreen : public UIScreen {
 public:
+	UIDialogScreen() : UIScreen(), finished_(false) {}
 	virtual void key(const KeyInput &key);
+
+private:
+	bool finished_;
 };
 
 

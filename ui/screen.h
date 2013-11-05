@@ -20,6 +20,10 @@
 #include "base/display.h"
 #include "base/NativeApp.h"
 
+namespace UI {
+	class View;
+}
+
 struct InputState;
 
 enum DialogResult {
@@ -27,6 +31,7 @@ enum DialogResult {
 	DR_CANCEL,
 	DR_YES,
 	DR_NO,
+	DR_BACK,
 };
 
 class ScreenManager;
@@ -39,6 +44,7 @@ public:
 		screenManager_ = 0;
 	}
 
+	virtual void onFinish(DialogResult reason) {}
 	virtual void update(InputState &input) {}
 	virtual void render() {}
 	virtual void deviceLost() {}
@@ -47,6 +53,8 @@ public:
 	virtual void key(const KeyInput &key) {}
 	virtual void axis(const AxisInput &touch) {}
 	virtual void sendMessage(const char *msg, const char *value) {}
+
+	virtual void RecreateViews() {}
 
 	ScreenManager *screenManager() { return screenManager_; }
 	void setScreenManager(ScreenManager *sm) { screenManager_ = sm; }
@@ -89,8 +97,11 @@ public:
 	// Push a dialog box in front. Currently 1-level only.
 	void push(Screen *screen, int layerFlags = 0);
 
+	// Recreate all views
+	void RecreateAllViews();
+
 	// Pops the dialog away.
-	void finishDialog(const Screen *dialog, DialogResult result = DR_OK);
+	void finishDialog(Screen *dialog, DialogResult result = DR_OK);
 
 	// Instant touch, separate from the update() mechanism.
 	void touch(const TouchInput &touch);
@@ -116,6 +127,7 @@ private:
 	struct Layer {
 		Screen *screen;
 		int flags;  // From LAYER_ enum above
+		UI::View *focusedView;  // TODO: save focus here. Going for quick solution now to reset focus.
 	};
 
 	// Dialog stack. These are shown "on top" of base screens and the Android back button works as expected.

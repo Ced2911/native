@@ -20,6 +20,7 @@
 #include "file/vfs.h"
 
 #ifdef _WIN32
+#include "../util/text/utf8.h"
 	// Function Cross-Compatibility
 #define strcasecmp _stricmp
 #endif
@@ -100,7 +101,7 @@ void IniFile::Section::Set(const char* key, const std::string& newValue, const s
 
 bool IniFile::Section::Get(const char* key, std::string* value, const char* defaultValue)
 {
-	std::string* line = GetLine(key, value, 0);
+	const std::string* line = GetLine(key, value, 0);
 	if (!line)
 	{
 		if (defaultValue)
@@ -360,7 +361,8 @@ bool IniFile::GetKeys(const char* sectionName, std::vector<std::string>& keys) c
 	{
 		std::string key;
 		ParseLine(*liter, &key, 0, 0);
-		keys.push_back(key);
+		if (!key.empty())
+			keys.push_back(key);
 	}
 	return true;
 }
@@ -411,8 +413,11 @@ bool IniFile::Load(const char* filename)
 
 	// Open file
 	std::ifstream in;
+#ifdef _WIN32
+	in.open(ConvertUTF8ToWString(filename), std::ios::in);
+#else
 	in.open(filename, std::ios::in);
-
+#endif
 	if (in.fail()) return false;
 
 	bool success = Load(in);
@@ -486,7 +491,11 @@ bool IniFile::Load(std::istream &in) {
 bool IniFile::Save(const char* filename)
 {
 	std::ofstream out;
+#ifdef _WIN32
+	out.open(ConvertUTF8ToWString(filename), std::ios::out);
+#else
 	out.open(filename, std::ios::out);
+#endif
 
 	if (out.fail())
 	{
@@ -519,7 +528,6 @@ bool IniFile::Save(const char* filename)
 	out.close();
 	return true;
 }
-
 
 bool IniFile::Get(const char* sectionName, const char* key, std::string* value, const char* defaultValue)
 {

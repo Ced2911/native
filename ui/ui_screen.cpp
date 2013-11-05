@@ -55,7 +55,12 @@ void UIScreen::key(const KeyInput &key) {
 
 void UIDialogScreen::key(const KeyInput &key) {
 	if ((key.flags & KEY_DOWN) && UI::IsEscapeKeyCode(key.keyCode)) {
-		screenManager()->finishDialog(this, DR_CANCEL);
+		if (finished_) {
+			ELOG("Screen already finished");
+		} else {
+			finished_ = true;
+			screenManager()->finishDialog(this, DR_BACK);
+		}
 	} else {
 		UIScreen::key(key);
 	}
@@ -96,12 +101,12 @@ void UIScreen::axis(const AxisInput &axis) {
 }
 
 UI::EventReturn UIScreen::OnBack(UI::EventParams &e) {
-	screenManager()->finishDialog(this, DR_OK);
+	screenManager()->finishDialog(this, DR_BACK);
 	return UI::EVENT_DONE;
 }
 
 PopupScreen::PopupScreen(std::string title, std::string button1, std::string button2)
-	: title_(title), box_(0) {
+	: box_(0), title_(title) {
 	I18NCategory *d = GetI18NCategory("Dialog");
 	button1_ = d->T(button1.c_str());
 	button2_ = d->T(button2.c_str());
@@ -114,7 +119,7 @@ void PopupScreen::touch(const TouchInput &touch) {
 	}
 
 	if (!box_->GetBounds().Contains(touch.x, touch.y))
-		screenManager()->finishDialog(this, DR_CANCEL);
+		screenManager()->finishDialog(this, DR_BACK);
 
 	UIDialogScreen::touch(touch);
 }
@@ -124,7 +129,7 @@ void PopupScreen::CreateViews() {
 
 	root_ = new AnchorLayout(new LayoutParams(FILL_PARENT, FILL_PARENT));
 
-	box_ = new LinearLayout(ORIENT_VERTICAL, 
+	box_ = new LinearLayout(ORIENT_VERTICAL,
 		new AnchorLayoutParams(550, FillVertical() ? dp_yres - 30 : WRAP_CONTENT, dp_xres / 2, dp_yres / 2, NONE, NONE, true));
 
 	root_->Add(box_);
@@ -183,7 +188,7 @@ void ListPopupScreen::CreatePopupContents(UI::ViewGroup *parent) {
 UI::EventReturn ListPopupScreen::OnListChoice(UI::EventParams &e) {
 	adaptor_.SetSelected(e.a);
 	if (callback_)
-		callback_(adaptor_.GetSelected());	
+		callback_(adaptor_.GetSelected());
 	screenManager()->finishDialog(this, DR_OK);
 	OnCompleted(DR_OK);
 	OnChoice.Dispatch(e);
@@ -205,7 +210,12 @@ UI::EventReturn PopupMultiChoice::HandleClick(UI::EventParams &e) {
 }
 
 void PopupMultiChoice::UpdateText() {
-	valueText_ = category_ ? category_->T(choices_[*value_ - minVal_]) : choices_[*value_ - minVal_];
+	// Clamp the value to be safe.
+	if (*value_ < minVal_ || *value_ > minVal_ + numChoices_ - 1) {
+		valueText_ = "(invalid choice)";  // Shouldn't happen. Should be no need to translate this.
+	} else {
+		valueText_ = category_ ? category_->T(choices_[*value_ - minVal_]) : choices_[*value_ - minVal_];
+	}
 }
 
 void PopupMultiChoice::ChoiceCallback(int num) {

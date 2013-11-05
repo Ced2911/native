@@ -4,22 +4,25 @@
 #include <string.h>
 #include <string>
 #include "gfx/gl_common.h"
+#include "gfx_es2/gpu_features.h"
 
 #ifdef USING_GLES2
 
-#ifdef ANDROID
+#ifndef GL_MIN_EXT
+#define GL_MIN_EXT 0x8007
+#endif
+
+#ifndef GL_MAX_EXT
+#define GL_MAX_EXT 0x8008
+#endif
+
+#if defined(ANDROID) || defined(BLACKBERRY)
 // Additional extensions not included in GLES2/gl2ext.h from the NDK
 
 /* GL_QCOM_alpha_test */
 #define GL_ALPHA_TEST_QCOM                   0x0BC0
 #define GL_ALPHA_TEST_FUNC_QCOM              0x0BC1
 #define GL_ALPHA_TEST_REF_QCOM               0x0BC2
-
-/* GL_QCOM_binning_control */
-#define GL_BINNING_CONTROL_HINT_QCOM         0x8FB0
-#define GL_CPU_OPTIMIZED_QCOM                0x8FB1
-#define GL_GPU_OPTIMIZED_QCOM                0x8FB2
-#define GL_RENDER_DIRECT_TO_FRAMEBUFFER_QCOM 0x8FB3
 
 typedef void (GL_APIENTRYP PFNGLALPHAFUNCQCOMPROC) (GLenum func, GLclampf ref);
 extern PFNGLALPHAFUNCQCOMPROC glAlphaFuncQCOM;
@@ -32,9 +35,20 @@ extern PFNEGLGETSYSTEMTIMENVPROC eglGetSystemTimeNV;
 
 typedef GLvoid* (GL_APIENTRYP PFNGLMAPBUFFERPROC) (GLenum target, GLenum access);
 extern PFNGLMAPBUFFERPROC glMapBuffer;
+
 #endif
 
-#if !defined(IOS) && !defined(__SYMBIAN32__) && !defined(MEEGO_EDITION_HARMATTAN) && !defined(MAEMO)
+#if !defined(IOS)
+typedef void (EGLAPIENTRYP PFNGLDRAWTEXTURENVPROC) (GLuint texture, GLuint sampler, GLfloat x0, GLfloat y0, GLfloat x1, GLfloat y1, GLfloat z, GLfloat s0, GLfloat t0, GLfloat s1, GLfloat t1);
+extern PFNGLDRAWTEXTURENVPROC glDrawTextureNV;
+typedef void (EGLAPIENTRYP PFNGLCOPYIMAGESUBDATANVPROC) (GLuint srcName, GLenum
+																											srcTarget, GLint srcLevel, GLint srcX, GLint srcY, GLint srcZ, GLuint dstName,
+																											GLenum dstTarget, GLint dstLevel, GLint dstX, GLint dstY, GLint dstZ, GLsizei
+																											width, GLsizei height, GLsizei depth);
+extern PFNGLCOPYIMAGESUBDATANVPROC glCopyImageSubDataNV;
+#endif
+
+#if defined(ANDROID) || defined(BLACKBERRY)
 extern PFNGLDISCARDFRAMEBUFFEREXTPROC glDiscardFramebufferEXT;
 extern PFNGLGENVERTEXARRAYSOESPROC glGenVertexArraysOES;
 extern PFNGLBINDVERTEXARRAYOESPROC glBindVertexArrayOES;
@@ -53,16 +67,16 @@ extern PFNGLISVERTEXARRAYOESPROC glIsVertexArrayOES;
 
 // OpenGL state cache. Should convert all code to use this instead of directly calling glEnable etc,
 // as GL state changes can be expensive on some hardware.
-class OpenGLState
-{
+class OpenGLState {
 private:
 	template<GLenum cap, bool init>
 	class BoolState {
+	private:
 		bool _value;
 	public:
 		BoolState() : _value(init) {
 			OpenGLState::state_count++;
-        }
+		}
 
 		inline void set(bool value) {
 			if(value && value != _value) {
@@ -100,7 +114,7 @@ private:
 	public: \
 		SavedState1_##func() : p1(p1def) { \
 			OpenGLState::state_count++; \
-        }; \
+		}; \
 		void set(p1type newp1) { \
 			if(newp1 != p1) { \
 				p1 = newp1; \
@@ -119,7 +133,7 @@ private:
 	public: \
 		SavedState2_##func() : p1(p1def), p2(p2def) { \
 			OpenGLState::state_count++; \
-        }; \
+		}; \
 		inline void set(p1type newp1, p2type newp2) { \
 			if(newp1 != p1 || newp2 != p2) { \
 				p1 = newp1; \
@@ -160,7 +174,7 @@ private:
 	public: \
 		SavedState3_##func() : p1(p1def), p2(p2def), p3(p3def) { \
 			OpenGLState::state_count++; \
-        }; \
+		}; \
 		inline void set(p1type newp1, p2type newp2, p3type newp3) { \
 			if(newp1 != p1 || newp2 != p2 || newp3 != p3) { \
 				p1 = newp1; \
@@ -183,7 +197,7 @@ private:
 	public: \
 		SavedState4_##func() : p1(p1def), p2(p2def), p3(p3def), p4(p4def) { \
 			OpenGLState::state_count++; \
-        }; \
+		}; \
 		inline void set(p1type newp1, p2type newp2, p3type newp3, p4type newp4) { \
 			if(newp1 != p1 || newp2 != p2 || newp3 != p3 || newp4 != p4) { \
 				p1 = newp1; \
@@ -227,14 +241,15 @@ public:
 
 	// When adding a state here, don't forget to add it to OpenGLState::Restore() too
 
-	// Blend 
+	// Blending
 	BoolState<GL_BLEND, false> blend;
 	STATE4(glBlendFuncSeparate, GLenum, GLenum, GLenum, GLenum, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA) blendFuncSeparate;
 
+	// On OpenGL ES, using minmax blend requires glBlendEquationEXT (in theory at least but I don't think it's true in practice)
 	STATE1(glBlendEquation, GLenum, GL_FUNC_ADD) blendEquation;
 	STATEFLOAT4(glBlendColor, 1.0f) blendColor;
 
-	// Logic Ops
+	// Logic Ops. Not available on OpenGL ES at all.
 #if !defined(USING_GLES2)
 	BoolState<GL_COLOR_LOGIC_OP, false> colorLogicOp;
 	STATE1(glLogicOp, GLenum, GL_COPY) logicOp;
@@ -273,8 +288,9 @@ public:
 	STATE3(glStencilOp, GLenum, GLenum, GLenum, GL_KEEP, GL_KEEP, GL_KEEP) stencilOp;
 	STATE3(glStencilFunc, GLenum, GLint, GLuint, GL_ALWAYS, 0, 0xFF) stencilFunc;
 
-#ifdef ANDROID
-	// QCOM Alpha Test 
+#if defined(ANDROID) || defined(BLACKBERRY)
+	// QCOM Alpha Test. Old school alpha test but ported to GLES2. Does not seem to benefit
+	// speed very much so probably not worth the trouble.
 	BoolState<GL_ALPHA_TEST_QCOM, false> alphaTestQCOM;
 	STATE2(glAlphaFuncQCOM, GLenum, GLclampf, GL_ALWAYS, 0.0f) alphaFuncQCOM;
 #endif
@@ -289,31 +305,7 @@ public:
 extern OpenGLState glstate;
 
 
-// WARNING: This gets memset-d - so no strings please
-struct GLExtensions {
-	bool OES_depth24;
-	bool OES_packed_depth_stencil;
-	bool OES_depth_texture;
-	bool EXT_discard_framebuffer;
-	bool FBO_ARB;
-	bool FBO_EXT;
-	bool EXT_swap_control_tear;
-	bool QCOM_alpha_test;
-	bool QCOM_binning_control;
-	bool OES_mapbuffer;
-	bool OES_vertex_array_object;
-	
-	// EGL extensions
-
-	bool EGL_NV_system_time;
-	bool EGL_NV_coverage_sample;
-};
-
-
 extern std::string g_all_gl_extensions;
 extern std::string g_all_egl_extensions;
-
-
-extern GLExtensions gl_extensions;
 
 void CheckGLExtensions();

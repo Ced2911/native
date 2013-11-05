@@ -1,6 +1,6 @@
 #pragma once
 
-// More traditional UI framework than ui/ui.h. 
+// More traditional UI framework than ui/ui.h.
 
 // Still very simple to use.
 
@@ -21,6 +21,8 @@
 #include "math/lin/matrix4x4.h"
 #include "math/math_util.h"
 #include "math/geom2d.h"
+
+#undef small
 
 struct KeyInput;
 struct TouchInput;
@@ -102,11 +104,13 @@ struct Theme {
 	Style buttonFocusedStyle;
 	Style buttonDownStyle;
 	Style buttonDisabledStyle;
+	Style buttonHighlightedStyle;
 
 	Style itemStyle;
 	Style itemDownStyle;
 	Style itemFocusedStyle;
 	Style itemDisabledStyle;
+	Style itemHighlightedStyle;
 
 	Style headerStyle;
 
@@ -178,9 +182,11 @@ enum MeasureSpecType {
 	AT_MOST,
 };
 
+// I hope I can find a way to simplify this one day.
 enum EventReturn {
-	EVENT_DONE,
-	EVENT_SKIPPED,
+	EVENT_DONE,  // Return this when no other view may process this event, for example if you changed the view hierarchy
+	EVENT_SKIPPED,  // Return this if you ignored an event
+	EVENT_CONTINUE,  // Return this if it's safe to send this event to further listeners. This should normally be the default choice but often EVENT_DONE is necessary.
 };
 
 enum FocusFlags {
@@ -285,12 +291,11 @@ View *GetFocusedView();
 
 class View {
 public:
-	View(LayoutParams *layoutParams = 0) : layoutParams_(layoutParams), enabled_(true), visibility_(V_VISIBLE), measuredWidth_(0), measuredHeight_(0) {
+	View(LayoutParams *layoutParams = 0) : layoutParams_(layoutParams), visibility_(V_VISIBLE), measuredWidth_(0), measuredHeight_(0), enabledPtr_(0), enabled_(true) {
 		if (!layoutParams)
 			layoutParams_.reset(new LayoutParams());
 	}
-
-	virtual ~View() { if (HasFocus()) SetFocusedView(0); }
+	virtual ~View();
 
 	// Please note that Touch is called ENTIRELY asynchronously from drawing!
 	// Can even be called on a different thread! This is to really minimize latency, and decouple
@@ -305,7 +310,7 @@ public:
 	void Move(Bounds bounds) {
 		bounds_ = bounds;
 	}
-	
+
 	// Views don't do anything here in Layout, only containers implement this.
 	virtual void Measure(const UIContext &dc, MeasureSpec horiz, MeasureSpec vert);
 	virtual void Layout() {}
@@ -338,7 +343,13 @@ public:
 	}
 
 	void SetEnabled(bool enabled) { enabled_ = enabled; }
-	bool IsEnabled() const { return enabled_; }
+	bool IsEnabled() const {
+		if (enabledPtr_)
+			return *enabledPtr_;
+		else
+			return enabled_;
+	}
+	void SetEnabledPtr(bool *enabled) { enabledPtr_ = enabled; }
 
 	void SetVisibility(Visibility visibility) { visibility_ = visibility; }
 	Visibility GetVisibility() const { return visibility_; }
@@ -356,7 +367,6 @@ protected:
 	scoped_ptr<LayoutParams> layoutParams_;
 
 	std::string tag_;
-	bool enabled_;
 	Visibility visibility_;
 
 	// Results of measure pass. Set these in Measure.
@@ -369,6 +379,9 @@ protected:
 	scoped_ptr<Matrix4x4> transform_;
 
 private:
+	bool *enabledPtr_;
+	bool enabled_;
+
 	DISALLOW_COPY_AND_ASSIGN(View);
 };
 
@@ -389,7 +402,7 @@ public:
 class Clickable : public View {
 public:
 	Clickable(LayoutParams *layoutParams)
-		: View(layoutParams), downCountDown_(0), dragging_(false), down_(false) {}
+		: View(layoutParams), downCountDown_(0), dragging_(false), down_(false){}
 
 	virtual void Key(const KeyInput &input);
 	virtual void Touch(const TouchInput &input);
@@ -426,7 +439,7 @@ private:
 class Slider : public Clickable {
 public:
 	Slider(int *value, int minValue, int maxValue, LayoutParams *layoutParams = 0)
-		: Clickable(layoutParams), value_(value), showPercent_(false), minValue_(minValue), maxValue_(maxValue), paddingLeft_(5), paddingRight_(50) {}
+		: Clickable(layoutParams), value_(value), showPercent_(false), minValue_(minValue), maxValue_(maxValue), paddingLeft_(5), paddingRight_(70) {}
 	virtual void Draw(UIContext &dc);
 	virtual void Key(const KeyInput &input);
 	virtual void Touch(const TouchInput &input);
@@ -445,7 +458,7 @@ private:
 class SliderFloat : public Clickable {
 public:
 	SliderFloat(float *value, float minValue, float maxValue, LayoutParams *layoutParams = 0)
-		: Clickable(layoutParams), value_(value), minValue_(minValue), maxValue_(maxValue), paddingLeft_(5), paddingRight_(50) {}
+		: Clickable(layoutParams), value_(value), minValue_(minValue), maxValue_(maxValue), paddingLeft_(5), paddingRight_(70) {}
 	virtual void Draw(UIContext &dc);
 	virtual void Key(const KeyInput &input);
 	virtual void Touch(const TouchInput &input);
@@ -504,17 +517,20 @@ public:
 class Choice : public ClickableItem {
 public:
 	Choice(const std::string &text, LayoutParams *layoutParams = 0)
-		: ClickableItem(layoutParams), text_(text), smallText_(), atlasImage_(-1), selected_(false), centered_(false) {}
+		: ClickableItem(layoutParams), text_(text), smallText_(), atlasImage_(-1), iconImage_(-1), centered_(false), highlighted_(false), selected_(false) {}
 	Choice(const std::string &text, const std::string &smallText, bool selected = false, LayoutParams *layoutParams = 0)
-		: ClickableItem(layoutParams), text_(text), smallText_(smallText), atlasImage_(-1), selected_(selected), centered_(false) {}
-	
+		: ClickableItem(layoutParams), text_(text), smallText_(smallText), atlasImage_(-1), iconImage_(-1), centered_(false), highlighted_(false), selected_(selected) {}
 	Choice(ImageID image, LayoutParams *layoutParams = 0)
-		: ClickableItem(layoutParams), atlasImage_(image), selected_(false) {}
+		: ClickableItem(layoutParams), atlasImage_(image), iconImage_(-1), centered_(false), highlighted_(false), selected_(false) {}
 
+	virtual void HighlightChanged(bool highlighted);
 	virtual void GetContentDimensions(const UIContext &dc, float &w, float &h) const;
 	virtual void Draw(UIContext &dc);
 	virtual void SetCentered(bool c) {
 		centered_ = c;
+	}
+	virtual void SetIcon(ImageID iconImage) {
+		iconImage_ = iconImage;
 	}
 
 protected:
@@ -524,7 +540,9 @@ protected:
 	std::string text_;
 	std::string smallText_;
 	ImageID atlasImage_;
+	ImageID iconImage_;  // Only applies for text, non-centered
 	bool centered_;
+	bool highlighted_;
 
 private:
 	bool selected_;
@@ -541,10 +559,11 @@ public:
 	virtual void Key(const KeyInput &key);
 	virtual void Touch(const TouchInput &touch);
 	virtual void FocusChanged(int focusFlags);
-
+	
 	void Press() { down_ = true; dragging_ = false;  }
 	void Release() { down_ = false; dragging_ = false; }
 	bool IsDown() { return down_; }
+
 protected:
 	// hackery
 	virtual bool IsSticky() const { return true; }
@@ -591,12 +610,9 @@ public:
 
 	virtual void Draw(UIContext &dc);
 
-	EventReturn OnClicked(EventParams &e) {
-		if (toggle_)
-			*toggle_ = !(*toggle_);
-		return EVENT_DONE;
-	}
-
+	EventReturn OnClicked(EventParams &e);
+	//allow external agents to toggle the checkbox
+	void Toggle();
 private:
 	bool *toggle_;
 	std::string text_;

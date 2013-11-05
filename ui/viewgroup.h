@@ -122,6 +122,8 @@ public:
 		: LayoutParams(w, h, LP_LINEAR), weight(wgt), gravity(grav), margins(mgn), hasMargins_(true) {}
 	LinearLayoutParams(Size w, Size h, const Margins &mgn)
 		: LayoutParams(w, h, LP_LINEAR), weight(0.0f), gravity(G_TOPLEFT), margins(mgn), hasMargins_(true) {}
+	LinearLayoutParams(Size w, Size h, float wgt, const Margins &mgn)
+		: LayoutParams(w, h, LP_LINEAR), weight(wgt), gravity(G_TOPLEFT), margins(mgn), hasMargins_(true) {}
 	LinearLayoutParams(const Margins &mgn)
 		: LayoutParams(WRAP_CONTENT, WRAP_CONTENT, LP_LINEAR), weight(0.0f), gravity(G_TOPLEFT), margins(mgn), hasMargins_(true) {}
 
@@ -186,7 +188,7 @@ private:
 class ScrollView : public ViewGroup {
 public:
 	ScrollView(Orientation orientation, LayoutParams *layoutParams = 0) :
-		ViewGroup(layoutParams), 
+		ViewGroup(layoutParams),
 		orientation_(orientation),
 		scrollPos_(0),
 		scrollStart_(0),
@@ -240,11 +242,18 @@ public:
 
 	void AddChoice(const std::string &title);
 	void AddChoice(ImageID buttonImage);
+
 	int GetSelection() const { return selected_; }
 	void SetSelection(int sel);
+
+	void HighlightChoice(unsigned int choice);
+
+
 	virtual void Key(const KeyInput &input);
+
 	void SetTopTabs(bool tabs) { topTabs_ = tabs; }
 	void Draw(UIContext &dc);
+
 	Event OnChoice;
 
 private:
@@ -282,6 +291,7 @@ public:
 		tabs_[currentTab_]->SetVisibility(V_GONE);
 		currentTab_ = tab;
 		tabs_[currentTab_]->SetVisibility(V_VISIBLE);
+		tabStrip_->SetSelection(tab);
 	}
 
 	int GetCurrentTab() const { return currentTab_; }
@@ -344,7 +354,7 @@ private:
 class ListView : public ScrollView {
 public:
 	ListView(ListAdaptor *a, LayoutParams *layoutParams = 0);
-	
+
 	int GetSelected() { return adaptor_->GetSelected(); }
 
 	Event OnChoice;

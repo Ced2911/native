@@ -26,7 +26,7 @@ struct DispatchQueueItem {
 	EventParams params;
 };
 
-std::queue<DispatchQueueItem> g_dispatchQueue;
+std::deque<DispatchQueueItem> g_dispatchQueue;
 
 
 void EventTriggered(Event *e, EventParams params) {
@@ -35,7 +35,7 @@ void EventTriggered(Event *e, EventParams params) {
 	DispatchQueueItem item;
 	item.e = e;
 	item.params = params;
-	g_dispatchQueue.push(item);
+	g_dispatchQueue.push_front(item);
 }
 
 void DispatchEvents() {
@@ -43,11 +43,19 @@ void DispatchEvents() {
 
 	while (!g_dispatchQueue.empty()) {
 		DispatchQueueItem item = g_dispatchQueue.back();
-		g_dispatchQueue.pop();
-		item.e->Dispatch(item.params);
+		g_dispatchQueue.pop_back();
+		if (item.e) {
+			item.e->Dispatch(item.params);
+		}
 	}
 }
 
+void RemoveQueuedEvents(View *v) {
+	for (size_t i = 0; i < g_dispatchQueue.size(); i++) {
+		if (g_dispatchQueue[i].params.v == v)
+			g_dispatchQueue.erase(g_dispatchQueue.begin() + i);
+	}
+}
 
 View *GetFocusedView() {
 	return focusedView;
@@ -103,6 +111,7 @@ void Event::Trigger(EventParams &e) {
 
 // Call this from UI thread
 EventReturn Event::Dispatch(EventParams &e) {
+	bool eventHandled = false;
 	for (auto iter = handlers_.begin(); iter != handlers_.end(); ++iter) {
 		if ((iter->func)(e) == UI::EVENT_DONE) {
 			// Event is handled, stop looping immediately. This event might even have gotten deleted.
@@ -110,6 +119,12 @@ EventReturn Event::Dispatch(EventParams &e) {
 		}
 	}
 	return UI::EVENT_SKIPPED;
+}
+
+View::~View() {
+	if (HasFocus())
+		SetFocusedView(0);
+	RemoveQueuedEvents(this);
 }
 
 void View::Measure(const UIContext &dc, MeasureSpec horiz, MeasureSpec vert) {
@@ -155,7 +170,7 @@ void Clickable::FocusChanged(int focusFlags) {
 }
 
 void Clickable::Touch(const TouchInput &input) {
-	if (!enabled_) {
+	if (!IsEnabled()) {
 		dragging_ = false;
 		down_ = false;
 		return;
@@ -174,12 +189,12 @@ void Clickable::Touch(const TouchInput &input) {
 	} else if (input.flags & TOUCH_MOVE) {
 		if (dragging_)
 			down_ = bounds_.Contains(input.x, input.y);
-	} 
+	}
 	if (input.flags & TOUCH_UP) {
 		if ((input.flags & TOUCH_CANCEL) == 0 && dragging_ && bounds_.Contains(input.x, input.y)) {
 			Click();
 		}
-		down_ = false;	
+		down_ = false;
 		downCountDown_ = 0;
 		dragging_ = false;
 	}
@@ -196,7 +211,7 @@ bool IsEscapeKeyCode(int keyCode) {
 }
 
 void Clickable::Key(const KeyInput &key) {
-	if (!HasFocus()) {
+	if (!HasFocus() && key.deviceId != DEVICE_ID_MOUSE) {
 		down_ = false;
 		return;
 	}
@@ -220,7 +235,7 @@ void Clickable::Key(const KeyInput &key) {
 
 void StickyChoice::Touch(const TouchInput &input) {
 	dragging_ = false;
-	if (!enabled_) {
+	if (!IsEnabled()) {
 		down_ = false;
 		return;
 	}
@@ -269,19 +284,21 @@ void ClickableItem::GetContentDimensions(const UIContext &dc, float &w, float &h
 }
 
 ClickableItem::ClickableItem(LayoutParams *layoutParams) : Clickable(layoutParams) {
-	if (layoutParams_->width == WRAP_CONTENT) 
+	if (layoutParams_->width == WRAP_CONTENT)
 		layoutParams_->width = FILL_PARENT;
 	layoutParams_->height = ITEM_HEIGHT;
 }
 
 void ClickableItem::Draw(UIContext &dc) {
 	Style style =	dc.theme->itemStyle;
+
 	if (HasFocus()) {
 		style = dc.theme->itemFocusedStyle;
 	}
 	if (down_) {
 		style = dc.theme->itemDownStyle;
 	}
+
 	dc.FillRect(style.background, bounds_);
 }
 
@@ -297,11 +314,18 @@ void Choice::GetContentDimensions(const UIContext &dc, float &w, float &h) const
 	h += 16;
 }
 
+void Choice::HighlightChanged(bool highlighted){
+	highlighted_ = highlighted;
+}
+
 void Choice::Draw(UIContext &dc) {
 	if (!IsSticky()) {
 		ClickableItem::Draw(dc);
 	} else {
 		Style style =	dc.theme->itemStyle;
+		if (highlighted_) {
+			style = dc.theme->itemHighlightedStyle;
+		}
 		if (down_) {
 			style = dc.theme->itemDownStyle;
 		}
@@ -323,6 +347,9 @@ void Choice::Draw(UIContext &dc) {
 		if (centered_) {
 			dc.DrawText(text_.c_str(), bounds_.centerX(), bounds_.centerY(), style.fgColor, ALIGN_CENTER);
 		} else {
+			if (iconImage_ != -1) {
+				dc.Draw()->DrawImage(iconImage_, bounds_.x2() - 32 - paddingX, bounds_.centerY(), 0.5f, style.fgColor, ALIGN_CENTER);
+			}
 			dc.DrawText(text_.c_str(), bounds_.x + paddingX, bounds_.centerY(), style.fgColor, ALIGN_VCENTER);
 		}
 	}
@@ -359,6 +386,16 @@ void PopupHeader::Draw(UIContext &dc) {
 	dc.Draw()->DrawImageStretch(dc.theme->whiteImage, bounds_.x, bounds_.y2()-2, bounds_.x2(), bounds_.y2(), dc.theme->popupTitle.fgColor);
 }
 
+void CheckBox::Toggle(){
+	if (toggle_)
+		*toggle_ = !(*toggle_);
+};
+
+EventReturn CheckBox::OnClicked(EventParams &e) {
+	Toggle();
+	return EVENT_CONTINUE;  // It's safe to keep processing events.
+}
+
 void CheckBox::Draw(UIContext &dc) {
 	ClickableItem::Draw(dc);
 	int paddingX = 12;
@@ -381,9 +418,10 @@ void Button::GetContentDimensions(const UIContext &dc, float &w, float &h) const
 
 void Button::Draw(UIContext &dc) {
 	Style style = dc.theme->buttonStyle;
+
 	if (HasFocus()) style = dc.theme->buttonFocusedStyle;
 	if (down_) style = dc.theme->buttonDownStyle;
-	if (!enabled_) style = dc.theme->buttonDisabledStyle;
+	if (!IsEnabled()) style = dc.theme->buttonDisabledStyle;
 
 	// dc.Draw()->DrawImage4Grid(style.image, bounds_.x, bounds_.y, bounds_.x2(), bounds_.y2(), style.bgColor);
 	dc.FillRect(style.background, bounds_);
