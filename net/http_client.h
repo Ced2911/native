@@ -12,7 +12,7 @@
 #include <winsock2.h>
 #else
 // Hackish
-typedef u32 addrinfo;
+typedef unsigned int addrinfo;
 #endif
 #else
 #if defined(__FreeBSD__) || defined(__SYMBIAN32__)
