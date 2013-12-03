@@ -16,7 +16,15 @@
 #include <xtl.h>
 #endif
 #include <limits.h>
+
+#ifndef _XBOX
 #include <intrin.h>
+#else
+extern "C" void _ReadWriteBarrier();
+#pragma intrinsic(_ReadWriteBarrier)
+extern "C" void _WriteBarrier();
+#pragma intrinsic(_WriteBarrier)
+#endif
 
 // Zap stupid windows defines
 // Should move these somewhere clever.
@@ -81,7 +89,11 @@ public:
 	}
 
 private:
+#ifndef _XBOX
 	volatile unsigned int value;
+#else
+	volatile long value;
+#endif
 
 	DISALLOW_COPY_AND_ASSIGN(atomic_flag);
 };
