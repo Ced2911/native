@@ -7,9 +7,13 @@
 #include <unistd.h>
 #define closesocket close
 #else
+#ifdef _XBOX
+#include <winsockx.h>
+#else
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <io.h>
+#endif
 #endif
 
 #include <stdio.h>
@@ -65,6 +69,7 @@ bool Connection::Resolve(const char *host, int port) {
 }
 
 bool Connection::Connect() {
+#ifndef _XBOX
 	if (port_ <= 0) {
 		ELOG("Bad port");
 		return false;
@@ -95,6 +100,7 @@ bool Connection::Connect() {
 	// Let's not leak this socket.
 	closesocket(sock_);
 	sock_ = -1;
+#endif
 	return false;
 }
 

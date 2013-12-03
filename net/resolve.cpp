@@ -8,8 +8,12 @@
 
 
 #ifdef _WIN32
+#ifdef _XBOX
+#include <winsockx.h>
+#else
 #include <WinSock2.h>
 #include <Ws2tcpip.h>
+#endif
 #undef min
 #undef max
 #else
@@ -44,6 +48,7 @@ void Shutdown()
 
 char *DNSResolveTry(const char *host, const char **err)
 {
+#ifndef _XBOX
 	struct hostent *hent;
 	if((hent = gethostbyname(host)) == NULL)
 	{
@@ -62,6 +67,9 @@ char *DNSResolveTry(const char *host, const char **err)
 	}
 	strncpy(ip, iptoa, iplen);
 	return ip;
+#else
+	return NULL;
+#endif
 }
 
 char *DNSResolve(const char *host)
@@ -78,6 +86,7 @@ char *DNSResolve(const char *host)
 
 bool DNSResolve(const std::string &host, const std::string &service, addrinfo **res, std::string &error)
 {
+#ifndef _XBOX
 	addrinfo hints = {0};
 	// TODO: Might be uses to lookup other values.
 	hints.ai_socktype = SOCK_STREAM;
@@ -119,16 +128,22 @@ bool DNSResolve(const std::string &host, const std::string &service, addrinfo **
 	}
 
 	return true;
+#else
+	return false;
+#endif
 }
 
 void DNSResolveFree(addrinfo *res)
 {
+#ifndef _XBOX
 	if (res != NULL)
 		freeaddrinfo(res);
+#endif
 }
 
 int inet_pton(int af, const char* src, void* dst)
 {
+#ifndef _XBOX
 	if (af == AF_INET)
 	{
 		unsigned char *ip = (unsigned char *)dst;
@@ -197,6 +212,9 @@ int inet_pton(int af, const char* src, void* dst)
 			return 0;
 	}
 	return 1;
+#else
+	return 0;
+#endif
 }
 
 }
