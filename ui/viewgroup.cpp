@@ -191,6 +191,7 @@ float GetDirectionScore(View *origin, View *destination, FocusDirection directio
 	float dirY = dy / distance;
 
 	bool wrongDirection = false;
+	bool vertical = false;
 	float horizOverlap = HorizontalOverlap(origin->GetBounds(), destination->GetBounds());
 	float vertOverlap = VerticalOverlap(origin->GetBounds(), destination->GetBounds());
 	if (horizOverlap == 1.0f && vertOverlap == 1.0f) {
@@ -209,6 +210,7 @@ float GetDirectionScore(View *origin, View *destination, FocusDirection directio
 		if (dirY > 0.0f) {
 			wrongDirection = true;
 		}
+		vertical = true;
 		break;
 	case FOCUS_RIGHT:
 		overlap = vertOverlap;
@@ -221,6 +223,7 @@ float GetDirectionScore(View *origin, View *destination, FocusDirection directio
 		if (dirY < 0.0f) {
 			wrongDirection = true;
 		}
+		vertical = true;
 		break;
 	case FOCUS_PREV:
 	case FOCUS_NEXT:
@@ -228,10 +231,25 @@ float GetDirectionScore(View *origin, View *destination, FocusDirection directio
 		break;
 	}
 
+	// Add a small bonus if the views are the same size. This prioritizes moving to the next item
+	// upwards in a scroll view instead of moving up to the top bar.
+	float bonus = 0.0f;
+	if (vertical) {
+		float widthDifference = origin->GetBounds().w - destination->GetBounds().w;
+		if (widthDifference == 0) {
+			bonus = 1;
+		}
+	} else {
+		float heightDifference = origin->GetBounds().h - destination->GetBounds().h;
+		if (heightDifference == 0) {
+			bonus = 1;
+		}
+	}
+
 	if (wrongDirection)
 		return 0.0f;
 	else
-		return 1.0f/distance + overlap*10;
+		return 1.0f / distance + overlap*10 + bonus;
 }
 
 
@@ -646,6 +664,7 @@ void ScrollView::Draw(UIContext &dc) {
 		ViewGroup::Draw(dc);
 		return;
 	}
+
 	dc.PushScissor(bounds_);
 	views_[0]->Draw(dc);
 	dc.PopScissor();
@@ -707,8 +726,10 @@ void ScrollView::ScrollRelative(float distance) {
 }
 
 void ScrollView::ClampScrollPos(float &pos) {
-	if (!views_.size())
+	if (!views_.size()) {
 		pos = 0.0f;
+		return;
+	}
 	// Clamp scrollTarget.
 	float childHeight = views_[0]->GetBounds().h;
 	float scrollMax = std::max(0.0f, childHeight - bounds_.h);

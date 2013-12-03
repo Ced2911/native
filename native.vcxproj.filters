@@ -19,6 +19,9 @@
       <Filter>ui</Filter>
     </None>
     <None Include="..\ios\main.mm" />
+    <None Include="ext\libzip\Android.mk">
+      <Filter>ext\libzip</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="gfx\gl_debug_log.h">
@@ -130,6 +133,9 @@
       <Filter>json</Filter>
     </ClInclude>
     <ClInclude Include="file\file_util.h">
+      <Filter>file</Filter>
+    </ClInclude>
+    <ClInclude Include="file\path.h">
       <Filter>file</Filter>
     </ClInclude>
     <ClInclude Include="gfx_es2\vertex_format.h">
@@ -286,6 +292,18 @@
     <ClInclude Include="gfx_es2\draw_text.h">
       <Filter>gfx</Filter>
     </ClInclude>
+    <ClInclude Include="ext\libzip\zip.h">
+      <Filter>ext\libzip</Filter>
+    </ClInclude>
+    <ClInclude Include="ext\libzip\zipint.h">
+      <Filter>ext\libzip</Filter>
+    </ClInclude>
+    <ClInclude Include="ext\libzip\config.h">
+      <Filter>ext\libzip</Filter>
+    </ClInclude>
+    <ClInclude Include="util\text\parsers.h">
+      <Filter>util</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="gfx\gl_debug_log.cpp">
@@ -373,6 +391,9 @@
       <Filter>json</Filter>
     </ClCompile>
     <ClCompile Include="file\file_util.cpp">
+      <Filter>file</Filter>
+    </ClCompile>
+    <ClCompile Include="file\path.cpp">
       <Filter>file</Filter>
     </ClCompile>
     <ClCompile Include="gfx_es2\vertex_format.cpp">
@@ -516,6 +537,171 @@
       <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="base\QtMain.cpp" />
+    <ClCompile Include="ext\libzip\zip_add.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_add_dir.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_close.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_delete.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_dirent.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_entry_free.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_entry_new.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_err_str.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_error.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_error_clear.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_error_get.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_error_get_sys_type.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_error_strerror.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_error_to_str.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_fclose.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_file_error_clear.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_file_error_get.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_file_get_offset.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_file_strerror.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_filerange_crc.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_fopen.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_fopen_index.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_fread.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_free.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_get_archive_comment.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_get_archive_flag.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_get_file_comment.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_get_name.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_get_num_files.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_memdup.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_name_locate.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_new.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_open.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_rename.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_replace.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_set_archive_comment.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_set_archive_flag.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_set_file_comment.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_set_name.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_source_buffer.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_source_file.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_source_filep.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_source_free.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_source_function.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_source_zip.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_stat.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_stat_index.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_stat_init.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_strerror.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_unchange.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_unchange_all.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_unchange_archive.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\zip_unchange_data.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\libzip\mkstemp.c">
+      <Filter>ext\libzip</Filter>
+    </ClCompile>
+    <ClCompile Include="util\text\parsers.cpp">
+      <Filter>util</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="gfx">
@@ -580,6 +766,9 @@
     </Filter>
     <Filter Include="i18n">
       <UniqueIdentifier>{02e8ef95-82c7-4420-b029-a189a5e0fcbd}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ext\libzip">
+      <UniqueIdentifier>{aa8b9b49-2ff8-4961-b6cc-9c33ea674130}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>

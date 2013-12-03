@@ -19,7 +19,12 @@
 #include <QFeedbackHapticsEffect>
 #include "SymbianMediaKeys.h"
 #endif
+#ifdef QT_HAS_SDL
+#include "SDL/SDLJoystick.h"
+#endif
 #include "QtMain.h"
+
+
 
 InputState* input_state;
 
@@ -29,7 +34,7 @@ std::string System_GetProperty(SystemProperty prop) {
 #ifdef __SYMBIAN32__
 		return "Qt:Symbian";
 #elif defined(BLACKBERRY)
-		return "Qt:Blackberry10";
+		return "Qt:Blackberry";
 #elif defined(MEEGO_EDITION_HARMATTAN)
 		return "Qt:Meego";
 #elif defined(Q_OS_LINUX)
@@ -77,7 +82,10 @@ float CalculateDPIScale()
 #endif
 }
 
-Q_DECL_EXPORT int main(int argc, char *argv[])
+#ifndef QT_HAS_SDL
+Q_DECL_EXPORT
+#endif
+int main(int argc, char *argv[])
 {
 #ifdef Q_OS_LINUX
 	QApplication::setAttribute(Qt::AA_X11InitThreads, true);
@@ -109,14 +117,10 @@ Q_DECL_EXPORT int main(int argc, char *argv[])
 #endif
 	NativeInit(argc, (const char **)argv, savegame_dir, assets_dir, "BADCOFFEE");
 
-#if !defined(Q_OS_LINUX) || defined(ARM)
+#if defined(ARM)
 	MainUI w;
 	w.resize(pixel_xres, pixel_yres);
-#ifdef ARM
 	w.showFullScreen();
-#else
-	w.show();
-#endif
 #endif
 #ifdef __SYMBIAN32__
 	// Set RunFast hardware mode for VFPv2.
@@ -134,6 +138,10 @@ Q_DECL_EXPORT int main(int argc, char *argv[])
 	QObject::connect(thread, SIGNAL(finished()), thread, SLOT(deleteLater()));
 	thread->start();
 
+#ifdef QT_HAS_SDL
+	SDLJoystick joy(true);
+	joy.startEventLoop();
+#endif
 	int ret = a.exec();
 	delete audio;
 	thread->quit();

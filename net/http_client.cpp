@@ -22,8 +22,6 @@
 #include "net/resolve.h"
 #include "net/url.h"
 
-// #include "strings/strutil.h"
-
 namespace net {
 
 Connection::Connection() 
@@ -54,7 +52,7 @@ bool Connection::Resolve(const char *host, int port) {
 
 	char port_str[10];
 	snprintf(port_str, sizeof(port_str), "%d", port);
-	
+
 	std::string err;
 	if (!net::DNSResolve(host, port_str, &resolved_, err)) {
 		ELOG("Failed to resolve host %s: %s", host, err.c_str());
@@ -123,7 +121,8 @@ Client::~Client() {
 #define USERAGENT "NATIVEAPP 1.0"
 
 
-void DeChunk(Buffer *inbuffer, Buffer *outbuffer) {
+void DeChunk(Buffer *inbuffer, Buffer *outbuffer, int contentLength, float *progress) {
+	int dechunkedBytes = 0;
 	while (true) {
 		std::string line;
 		inbuffer->TakeLineCRLF(&line);
@@ -140,11 +139,19 @@ void DeChunk(Buffer *inbuffer, Buffer *outbuffer) {
 			inbuffer->clear();
 			return;
 		}
+		dechunkedBytes += chunkSize;
+		if (progress && contentLength) {
+			*progress = (float)dechunkedBytes / contentLength;
+		}
 		inbuffer->Skip(2);
 	}
 }
 
-int Client::GET(const char *resource, Buffer *output) {
+int Client::GET(const char *resource, Buffer *output, float *progress) {
+	if (progress) {
+		*progress = 0.01f;
+	}
+
 	Buffer buffer;
 	const char *tpl =
 		"GET %s HTTP/1.1\r\n"
@@ -164,8 +171,10 @@ int Client::GET(const char *resource, Buffer *output) {
 	Buffer readbuf;
 
 	// Snarf all the data we can into RAM. A little unsafe but hey.
-	if (!readbuf.ReadAll(sock()))
+	if (readbuf.Read(sock(), 4096) < 0) {
+		ELOG("Failed to read HTTP headers :(");
 		return -1;
+	}
 
 	// Grab the first header line that contains the http code.
 
@@ -179,6 +188,7 @@ int Client::GET(const char *resource, Buffer *output) {
 	if (code_pos != line.npos) {
 		code_pos = line.find_first_not_of(' ', code_pos);
 	}
+
 	if (code_pos != line.npos) {
 		code = atoi(&line[code_pos]);
 	} else {
@@ -213,29 +223,43 @@ int Client::GET(const char *resource, Buffer *output) {
 		}
 	}
 
+	if (!contentLength && progress) {
+		// Content length is unknown.
+		// Set progress to 1% so it looks like something is happening...
+		*progress = 0.1f;
+	}
+
+	if (!contentLength) {
+		// No way to know how far along we are. Let's just not update the progress counter.
+		if (!readbuf.ReadAll(sock()))
+			return -1;
+	} else {
+		// Let's read in chunks, updating progress between each.
+		if (!readbuf.ReadAllWithProgress(sock(), contentLength, progress))
+			return -1;
+	}
+
 	// output now contains the rest of the reply. Dechunk it.
 	if (chunked) {
-		DeChunk(&readbuf, output);
+		DeChunk(&readbuf, output, contentLength, progress);
 	} else {
 		output->Append(readbuf);
 	}
 
 	// If it's gzipped, we decompress it and put it back in the buffer.
 	if (gzip) {
-		std::string compressed;
+		std::string compressed, decompressed;
 		output->TakeAll(&compressed);
-		// What is this garbage?
-		//if (compressed[0] == 0x8e)
-//			compressed = compressed.substr(4);
-		std::string decompressed;
 		bool result = decompress_string(compressed, &decompressed);
 		if (!result) {
 			ELOG("Error decompressing using zlib");
+			*progress = 0.0f;
 			return -1;
 		}
 		output->Append(decompressed);
 	}
 
+	*progress = 1.0f;
 	return code;
 }
 
@@ -286,15 +310,14 @@ int Client::POST(const char *resource, const std::string &data, Buffer *output) 
 }
 
 Download::Download(const std::string &url, const std::string &outfile)
-	: progress_(0.0f), url_(url), outfile_(outfile), resultCode_(0), failed_(false), cancelled_(false) {
+	: progress_(0.0f), url_(url), outfile_(outfile), resultCode_(0), completed_(false), failed_(false), cancelled_(false) {
 }
 
 Download::~Download() {
 
 }
 
-void Download::Start(std::shared_ptr<Download> self)
-{
+void Download::Start(std::shared_ptr<Download> self) {
 	std::thread th(std::bind(&Download::Do, this, self));
 	th.detach();
 }
@@ -307,7 +330,7 @@ void Download::SetFailed(int code) {
 void Download::Do(std::shared_ptr<Download> self) {
 	// as long as this is in scope, we won't get destructed.
 	// yeah this is ugly, I need to think about how life time should be managed for these...
-	std::shared_ptr<Download> self_ = self;  
+	std::shared_ptr<Download> self_ = self;
 	resultCode_ = 0;
 
 	Url fileUrl(url_);
@@ -344,9 +367,9 @@ void Download::Do(std::shared_ptr<Download> self) {
 	}
 
 	// TODO: Allow cancelling during a GET somehow...
-	int resultCode = client.GET(fileUrl.Resource().c_str(), &buffer_);
+	int resultCode = client.GET(fileUrl.Resource().c_str(), &buffer_, &progress_);
 	if (resultCode == 200) {
-		ILOG("Completed downloading %s to %s", url_.c_str(), outfile_.c_str());
+		ILOG("Completed downloading %s to %s", url_.c_str(), outfile_.empty() ? "memory" : outfile_.c_str());
 		if (!outfile_.empty() && !buffer_.FlushToFile(outfile_.c_str())) {
 			ELOG("Failed writing download to %s", outfile_.c_str());
 		}
@@ -356,6 +379,10 @@ void Download::Do(std::shared_ptr<Download> self) {
 
 	resultCode_ = resultCode;
 	progress_ = 1.0f;
+
+	// Set this last to ensure no race conditions when checking Done. Users must always check
+	// Done before looking at the result code.
+	completed_ = true;
 }
 
 std::shared_ptr<Download> Downloader::StartDownload(const std::string &url, const std::string &outfile) {
@@ -365,14 +392,33 @@ std::shared_ptr<Download> Downloader::StartDownload(const std::string &url, cons
 	return dl;
 }
 
+void Downloader::StartDownloadWithCallback(
+	const std::string &url,
+	const std::string &outfile,
+	std::function<void(Download &)> callback) {
+	std::shared_ptr<Download> dl(new Download(url, outfile));
+	dl->SetCallback(callback);
+	downloads_.push_back(dl);
+	dl->Start(dl);
+}
+
 void Downloader::Update() {
 	restart:
 	for (size_t i = 0; i < downloads_.size(); i++) {
 		if (downloads_[i]->Progress() == 1.0f || downloads_[i]->Failed()) {
+			downloads_[i]->RunCallback();
 			downloads_.erase(downloads_.begin() + i);
 			goto restart;
 		}
 	}
+}
+
+std::vector<float> Downloader::GetCurrentProgress() {
+	std::vector<float> progress;
+	for (size_t i = 0; i < downloads_.size(); i++) {
+		progress.push_back(downloads_[i]->Progress());
+	}
+	return progress;
 }
 
 void Downloader::CancelAll() {
@@ -380,6 +426,5 @@ void Downloader::CancelAll() {
 		downloads_[i]->Cancel();
 	}
 }
-
 
 }	// http

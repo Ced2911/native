@@ -22,10 +22,14 @@
 #define HAVE_MEMORY_H 0
 
 /* Define to 1 if you have the `mkstemp' function. */
-#define HAVE_MKSTEMP 0
+#ifndef _WIN32
+#define HAVE_MKSTEMP 1
+#endif
 
 /* Define to 1 if you have the `MoveFileExA' function. */
-/* #undef HAVE_MOVEFILEEXA */
+#ifdef _WIN32
+#define HAVE_MOVEFILEEXA 1
+#endif
 
 /* Define to 1 if you have the <stdint.h> header file. */
 #define HAVE_STDINT_H 1
@@ -40,7 +44,7 @@
 #define HAVE_STRING_H 1
 
 /* Define to 1 if `tm_zone' is a member of `struct tm'. */
-#define HAVE_STRUCT_TM_TM_ZONE 1
+// #define HAVE_STRUCT_TM_TM_ZONE 0
 
 /* Define to 1 if you have the <sys/stat.h> header file. */
 #define HAVE_SYS_STAT_H 1

@@ -414,6 +414,9 @@ void CheckBox::Draw(UIContext &dc) {
 
 void Button::GetContentDimensions(const UIContext &dc, float &w, float &h) const {
 	dc.MeasureText(dc.theme->uiFont, text_.c_str(), &w, &h);
+	// Add some internal padding to not look totally ugly
+	w += 16;
+	h += 8;
 }
 
 void Button::Draw(UIContext &dc) {
@@ -470,6 +473,40 @@ void TextureView::Draw(UIContext &dc) {
 		dc.Draw()->Rect(bounds_.x, bounds_.y, bounds_.w, bounds_.h, color_);
 		dc.Flush();
 		dc.RebindTexture();
+	}
+}
+
+ImageFileView::ImageFileView(std::string filename, ImageSizeMode sizeMode, LayoutParams *layoutParams)
+	: InertView(layoutParams), color_(0xFFFFFFFF), sizeMode_(sizeMode) {
+	texture_ = new Texture();
+	if (!texture_->Load(filename.c_str())) {
+		ELOG("Failed to load texture %s", filename.c_str());
+	}
+}
+
+ImageFileView::~ImageFileView() {
+	delete texture_;
+}
+
+void ImageFileView::Draw(UIContext &dc) {
+	// TODO: involve sizemode
+	if (texture_) {
+		dc.Flush();
+		texture_->Bind(0);
+		dc.Draw()->Rect(bounds_.x, bounds_.y, bounds_.w, bounds_.h, color_);
+		dc.Flush();
+		dc.RebindTexture();
+	}
+}
+
+void ImageFileView::GetContentDimensions(const UIContext &dc, float &w, float &h) const {
+	// TODO: involve sizemode
+	if (texture_) {
+		w = (float)texture_->Width();
+		h = (float)texture_->Height();
+	} else {
+		w = 16;
+		h = 16;
 	}
 }
 

@@ -32,6 +32,7 @@ LOCAL_SRC_FILES :=\
     file/easy_file.cpp \
     file/chunk_file.cpp \
     file/file_util.cpp \
+    file/path.cpp \
     file/ini_file.cpp \
     file/zip_read.cpp \
     json/json_writer.cpp \
@@ -79,6 +80,7 @@ LOCAL_SRC_FILES :=\
     ui/virtual_input.cpp \
     util/random/perlin.cpp \
     util/text/utf8.cpp \
+	util/text/parsers.cpp \
     util/hash/hash.cpp
 
 LOCAL_CFLAGS := -O3 -DUSING_GLES2 -fsigned-char -fno-strict-aliasing -Wall -Wno-multichar -D__STDC_CONSTANT_MACROS

@@ -63,7 +63,7 @@ public:
 	~Client();
 
 	// Return value is the HTTP return code. 200 means OK. < 0 means some local error.
-	int GET(const char *resource, Buffer *output);
+	int GET(const char *resource, Buffer *output, float *progress = 0);
 
 	// Return value is the HTTP return code.
 	int POST(const char *resource, const std::string &data, const std::string &mime, Buffer *output);
@@ -84,10 +84,11 @@ public:
 
 	// Returns 1.0 when done. That one value can be compared exactly - or just use Done().
 	float Progress() const { return progress_; }
-	bool Done() const { return progress_ == 1.0f; }
 
+	bool Done() const { return completed_; }
 	bool Failed() const { return failed_; }
 
+	// NOTE! The value of ResultCode is INVALID until Done() returns true.
 	int ResultCode() const { return resultCode_; }
 
 	std::string url() const { return url_; }
@@ -95,9 +96,21 @@ public:
 
 	// If not downloading to a file, access this to get the result.
 	Buffer &buffer() { return buffer_; }
+	const Buffer &buffer() const { return buffer_; }
 
 	void Cancel() {
 		cancelled_ = true;
+	}
+
+	// NOTE: Callbacks are NOT executed until RunCallback is called. This is so that
+	// the call will end up on the thread that calls g_DownloadManager.Update().
+	void SetCallback(std::function<void(Download &)> callback) {
+		callback_ = callback;
+	}
+	void RunCallback() {
+		if (callback_) {
+			callback_(*this);
+		}
 	}
 
 private:
@@ -108,8 +121,10 @@ private:
 	std::string url_;
 	std::string outfile_;
 	int resultCode_;
+	bool completed_;
 	bool failed_;
 	volatile bool cancelled_;
+	std::function<void(Download &)> callback_;
 };
 
 using std::shared_ptr;
@@ -119,13 +134,19 @@ public:
 	~Downloader() {
 		CancelAll();
 	}
+
 	std::shared_ptr<Download> StartDownload(const std::string &url, const std::string &outfile);
+
+	void StartDownloadWithCallback(
+		const std::string &url,
+		const std::string &outfile,
+		std::function<void(Download &)> callback);
 
 	// Drops finished downloads from the list.
 	void Update();
-
-
 	void CancelAll();
+
+	std::vector<float> GetCurrentProgress();
 
 private:
 	std::vector<std::shared_ptr<Download>> downloads_;
